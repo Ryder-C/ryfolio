@@ -1,47 +1,37 @@
 ---
 import Breadcrumbs from '@/components/breadcrumbs.astro'
-import Link from '@/components/link.astro'
 import PageHead from '@/components/page-head.astro'
-import ProjectCard from '@/components/project-card.astro'
+import SocialIcons from '@/components/social-icons.astro'
 import Layout from '@/layouts/layout.astro'
-import { getAllProjects } from '@/lib/data-utils'
+import { getEntry } from 'astro:content'
 
-const projects = await getAllProjects()
+const author = await getEntry('authors', 'ryder')
+const { name, pronouns, avatar, bio, github, mail, website } = author.data
+
+const links = [
+  github && { href: github, label: 'GitHub' },
+  mail && { href: `mailto:${mail}`, label: 'Email' },
+  website && website !== github && { href: website, label: 'Website' },
+].filter(Boolean) as { href: string; label: string }[]
 ---
 
 <Layout class="max-w-3xl">
   <PageHead slot="head" title="About" />
   <Breadcrumbs items={[{ label: 'About', icon: 'lucide:info' }]} />
 
-  <section>
-    <div class="min-w-full">
-      <div class="prose mb-8">
-        <p class="mt-0">
-          astro-erudite is an opinionated, unstyled static blogging template
-          that prioritizes simplicity and performance, built with <Link
-            href="https://astro.build"
-            external
-            underline>Astro</Link
-          >, <Link href="https://tailwindcss.com" external underline
-            >Tailwind</Link
-          >, and <Link href="https://ui.shadcn.com" external underline
-            >shadcn/ui</Link
-          >. It provides a clean foundation for your content while being
-          extremely easy to customize.
-        </p>
-        <p>
-          To learn more about the philosophy behind this template, check out the
-          following blog post: <Link
-            href="/blog/the-state-of-static-blogs"
-            underline>The State of Static Blogs in 2024</Link
-          >.
-        </p>
+  <section class="flex flex-col items-center gap-6 py-8 text-center sm:flex-row sm:items-start sm:text-left">
+    <img
+      src={avatar}
+      alt={name}
+      class="size-28 rounded-full object-cover ring-2 ring-border"
+    />
+    <div class="flex flex-col gap-3">
+      <div>
+        <h1 class="text-3xl font-semibold">{name}</h1>
+        {pronouns && <p class="text-sm text-muted-foreground">{pronouns}</p>}
       </div>
-
-      <h2 class="mb-4 text-2xl font-medium">Example Projects Listing</h2>
-      <div class="flex flex-col gap-4">
-        {projects.map((project) => <ProjectCard project={project} />)}
-      </div>
+      {bio && <p class="text-base text-foreground/80">{bio}</p>}
+      {links.length > 0 && <SocialIcons links={links} />}
     </div>
   </section>
 </Layout>

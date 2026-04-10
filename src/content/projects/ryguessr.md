@@ -1,0 +1,7 @@
+---
+name: 'Ryguessr'
+description: 'This is an example project description! You should replace this with a description of your own project.'
+tags: ['Rust', 'React', 'Next.js', 'Axum']
+link: 'https://github.com/AdinAck/ryguessr'
+startDate: '2026-02-11'
+---
