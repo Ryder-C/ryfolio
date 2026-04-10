@@ -17,9 +17,8 @@ const { project } = Astro.props
   class="hover:bg-muted/50 rounded-xl border p-4 transition-colors duration-300 ease-in-out"
 >
   <Link
-    href={project.data.link}
+    href={`/projects/${project.id}`}
     class="flex flex-col gap-4 sm:flex-row"
-    external
   >
     {
       project.data.image && (
@@ -59,7 +58,7 @@ const { project } = Astro.props
       {
         project.data.tags && (
           <div class="flex flex-wrap gap-2">
-            {project.data.tags.map((tag: string) => (
+            {project.data.tags.map((tag) => (
               <Badge variant="muted">{tag}</Badge>
             ))}
           </div>
