@@ -9,10 +9,16 @@ import { NAV_LINKS, SITE } from '@/consts'
     class="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3"
   >
     <Link href="/" class="flex shrink-0 items-center justify-center gap-3">
-      <span
-        class="hidden h-full text-3xl leading-none min-[400px]:block"
-        style="font-family: 'Shadows Into Light', cursive;">{SITE.title}</span
-      >
+      <img
+        src="/logo-dark.png"
+        alt={SITE.title}
+        class="hidden h-10 w-auto min-[400px]:block dark:hidden"
+      />
+      <img
+        src="/logo-light.png"
+        alt={SITE.title}
+        class="hidden h-10 w-auto min-[400px]:dark:block"
+      />
     </Link>
     <div class="flex items-center gap-4">
       <nav class="flex items-center gap-4 text-sm sm:gap-6">
