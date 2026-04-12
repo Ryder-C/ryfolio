@@ -1,0 +1,147 @@
+---
+title: "Picking Player Colors That Don't Suck"
+description: 'Too deep of a dive into choosing maximally visually distinct random colors for players in a game'
+date: 2026-04-10
+tags: ['Math', 'Rust']
+---
+
+import Callout from '@/components/callout.astro'
+
+I was working on my game [Ryguessr](/projects/ryguessr) when I came to the problem of choosing random colors for players. Naively, I tried:
+
+- **Picking a random hex color**, led to players sometimes getting near-identical colors and no one can tell the pins apart on the map.
+- **Rotating through a fixed amount of "nice" colors**, works until a 9th player joins.
+
+I wanted something that (a) produces a stream of colors that are _actually_ perceptually distinct, (b) dynamically makes color choices even after players change their color or leave the game, and (c) has very low computational cost. Almost everything is in one file: [`server/src/colors.rs`](https://github.com/AdinAck/ryguessr/blob/main/server/src/colors.rs) so feel free to check it out.
+
+## Working in a perceptual color space
+
+Humans don't see distances in color the same way that monitors emit it. Two pairs of sRGB colors can be the same Euclidean distance apart and one pair may look very perceptually different compared to the other. So choosing random colors in this type of space is only going to make things more difficult.
+
+The fix is to move into a **perceptually uniform color space**, where Euclidean distance accurately tracks perceived difference.
+
+<Callout title="Perceptually Uniform Color Space" variant="definition">
+  A color space where the Euclidean distance between two points is proportional
+  to how different those colors look to human eyes.
+</Callout>
+I settled on [**OKLAB**](https://en.wikipedia.org/wiki/Oklab_color_space), a
+successor to [**CIELAB**](https://en.wikipedia.org/wiki/CIELAB_color_space) with
+some fixes. The conversion is also very cheap, just two $3 \times 3$ matrices
+and a cube.
+
+### OKLAB &rarr; LMS &rarr; linear sRGB
+
+OKLAB is built on top of a [LMS](https://en.wikipedia.org/wiki/LMS_color_space) color space which is defined by the cones in the human eye rather than "red, green, blue" like a monitor.
+
+Here is the pipeline:
+
+{/* prettier-ignore */}
+<Callout variant="notation">
+    - $L_\text{ok}$ is perceptual lightness (0 = black, 1 = white).
+    - $a$ is the green–red axis (negative green, positive red).
+    - $b$ is the blue–yellow axis (negative blue, positive yellow).
+</Callout>
+
+1. First apply the matrix for OKLAB &rarr; LMS
+
+$$
+\begin{pmatrix} L' \ M' \ S' \end{pmatrix} = \begin{pmatrix} 1 &
+0.3963377774 & 0.2158037573 \\ 1 & -0.1055613458 & -0.0638541728 \\ 1 & -
+0.0894841775 & -1.2914855480 \end{pmatrix} \begin{pmatrix} L_\text{ok} \\ a \\ b
+\end{pmatrix}
+$$
+
+<Callout variant="intuition">
+  The first column of the transition matrix is all 1's because L (lightness)
+  contributes equally to all three cone types.
+</Callout>
+
+2. Then cube
+
+$$
+L = (L')^3, \quad M = (M')^3, \quad S = (S')^3
+$$
+
+3. Then apply the matrix for LMS &rarr; linear sRGB
+
+$$
+\begin{pmatrix} R \\ G \\ B \end{pmatrix} =
+\begin{pmatrix}
+4.0767416621 & -3.3077115913 & 0.2309699292 \\
+-1.2684380046 & 2.6097574011 & -0.3413193965 \\
+-0.0041960863 & -0.7034186147 & 1.7076147010
+\end{pmatrix}
+\begin{pmatrix} L \\ M \\ S \end{pmatrix}
+$$
+
+Here is the code describing this process:
+
+```rust title="server/src/colors.rs"
+fn oklab_to_linear_srgb(lab: [f64; 3]) -> [f64; 3] {
+    let [l, a, b] = lab;
+
+    // Step 1
+    let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+    let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+    let s_ = l - 0.0894841775 * a - 1.2914855480 * b;
+
+    // Step 2
+    let l = l_.powi(3);
+    let m = m_.powi(3);
+    let s = s_.powi(3);
+
+    // Step 3
+    [
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+    ]
+}
+```
+
+### Linear sRGB &rarr; sRGB (gamma encoding)
+
+Monitor sRGB is gamma-encoded. The forward transfer function is
+
+$$
+c = \begin{cases} 12.92 \, c_{\text{lin}} & c_{\text{lin}} \le 0.0031308 \\[4pt] 1.055 \, c_{\text{lin}}^{1/2.4} - 0.055 & c_{\text{lin}} > 0.0031308 \end{cases}
+$$
+
+Which we can see in our code:
+
+```rust title="server/src/colors.rs"
+fn linear_to_srgb(c: f64) -> f64 {
+    if c <= 0.0031308 {
+        12.92 * c
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
+}
+```
+
+<Callout variant="problem">
+Not every OKLAB translates to a point inside the sRGB gamut.
+<Callout variant="solution">
+We clamp each channel into $[0, 1]$, this is easy but it's not a true perceptual nearest-point projection, so heavily out-of-gamut colors can shift hue slightly. This shouldn't really be visible in practice though.
+```rust title="server/src/colors.rs" add={2}
+fn linear_to_srgb(c: f64) -> f64 {
+    let c = c.clamp(0.0, 1.0);
+    if c <= 0.0031308 {
+        12.92 * c
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
+}
+````
+
+</Callout>
+
+A detailed way of fixing this correctly is explained by Björn Ottosson (the creator of OKLAB) in one of his blog posts (https://bottosson.github.io/posts/gamutclipping/).
+
+</Callout>
+
+## Sampling OKLAB: the R2 quasirandom sequence
+
+Now I have a nice perceptual space that I can convert to sRGB.
+
+So how do I generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$?
