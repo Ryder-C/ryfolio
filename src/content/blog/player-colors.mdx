@@ -6,6 +6,8 @@ tags: ['Math', 'Rust']
 ---
 
 import Callout from '@/components/callout.astro'
+import QuasirandomComparison from '@/components/QuasirandomComparison'
+import R1NumberLine from '@/components/R1NumberLine'
 
 I was working on my game [Ryguessr](/projects/ryguessr) when I came to the problem of choosing random colors for players. Naively, I tried:
 
@@ -20,10 +22,15 @@ Humans don't see distances in color the same way that monitors emit it. Two pair
 
 The fix is to move into a **perceptually uniform color space**, where Euclidean distance accurately tracks perceived difference.
 
-<Callout title="Perceptually Uniform Color Space" variant="definition">
+<Callout
+  title="Perceptually Uniform Color Space"
+  variant="definition"
+  defaultOpen={false}
+>
   A color space where the Euclidean distance between two points is proportional
   to how different those colors look to human eyes.
 </Callout>
+
 I settled on [**OKLAB**](https://en.wikipedia.org/wiki/Oklab_color_space), a
 successor to [**CIELAB**](https://en.wikipedia.org/wiki/CIELAB_color_space) with
 some fixes. The conversion is also very cheap, just two $3 \times 3$ matrices
@@ -31,7 +38,7 @@ and a cube.
 
 ### OKLAB &rarr; LMS &rarr; linear sRGB
 
-OKLAB is built on top of a [LMS](https://en.wikipedia.org/wiki/LMS_color_space) color space which is defined by the cones in the human eye rather than "red, green, blue" like a monitor.
+OKLAB is built on top of a [LMS](https://en.wikipedia.org/wiki/LMS_color_space), a color space that models the response of the three types of cones in the human eye: L (long-wavelength, red), M (medium-wavelength, green), and S (short-wavelength, blue).
 
 Here is the pipeline:
 
@@ -111,6 +118,7 @@ Which we can see in our code:
 
 ```rust title="server/src/colors.rs"
 fn linear_to_srgb(c: f64) -> f64 {
+    let c = c.clamp(0.0, 1.0);
     if c <= 0.0031308 {
         12.92 * c
     } else {
@@ -119,29 +127,74 @@ fn linear_to_srgb(c: f64) -> f64 {
 }
 ```
 
-<Callout variant="problem">
-Not every OKLAB translates to a point inside the sRGB gamut.
-<Callout variant="solution">
-We clamp each channel into $[0, 1]$, this is easy but it's not a true perceptual nearest-point projection, so heavily out-of-gamut colors can shift hue slightly. This shouldn't really be visible in practice though.
-```rust title="server/src/colors.rs" add={2}
-fn linear_to_srgb(c: f64) -> f64 {
-    let c = c.clamp(0.0, 1.0);
-    if c <= 0.0031308 {
-        12.92 * c
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    }
-}
-````
+We clamp each channel into $[0, 1]$ because there exist points in OKLAB that translate to points outside of the sRGB space. This is easy but it's not a true perceptual nearest-point projection, so far out colors can shift hue slightly. This shouldn't really be visible in practice though.
 
-</Callout>
+The proper way to do this is explained by Björn Ottosson (the creator of OKLAB) in [one of his blog posts](https://bottosson.github.io/posts/gamutclipping/).
 
-A detailed way of fixing this correctly is explained by Björn Ottosson (the creator of OKLAB) in one of his blog posts (https://bottosson.github.io/posts/gamutclipping/).
-
-</Callout>
-
-## Sampling OKLAB: the R2 quasirandom sequence
+## Sampling OKLAB: the $R_2$ quasirandom sequence
 
 Now I have a nice perceptual space that I can convert to sRGB.
 
 So how do I generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$?
+
+What we really want is a [low-discrepancy sequence](https://en.wikipedia.org/wiki/Low-discrepancy_sequence) (Also called a quasirandom sequence).
+
+<Callout variant="definition" title="Discrepancy">
+  Discrepancy is a measure of how uniformly a sequence fills a space. A
+  low-discrepancy sequence fills the space more uniformly than random sampling.
+</Callout>
+
+### Why the $R_2$ sequence?
+
+We need a two dimensional low-discrepency sequence. But wait, OKLAB is a three dimensional space. Shouldn't we be sampling in three dimensions?
+
+{/* prettier-ignore */}
+<Callout variant="recall">
+    OKLAB is three dimensional:
+    - $L$ (lightness)
+    - $a$ (green-red)
+    - $b$ (blue-yellow)
+</Callout>
+
+We want all player colors to be equally readable on the map. If we let lightness vary randomly then some players would get washed-out colors and other dark muddy colors.
+
+<Callout variant="solution" defaultOpen={false}>
+  We can fix this by just sampling from a two dimensional slice of OKLAB where
+  $L$ is fixed to some value we choose.
+</Callout>
+
+So we only need to fill the $a$-$b$ plane. A natural first idea is the $R_1$ sequence. Given the golden ratio $\varphi = \frac{1+\sqrt{5}}{2}$, the sequence is defined as
+
+$$
+    x_n = \frac{n}{\varphi} + x_0 \mod 1
+$$
+
+where $x_0$ is a seed offset. This sequence works beautifully in one dimension:
+
+<R1NumberLine client:load />
+
+So why not just run two $R_1$ sequences, one for $a$ and one for $b$? Well, we end up with points that are nicely spaced when projected to the $a$ or $b$ axis, but when looking at them in two dimensions we see obvious clumping along diagonal lines:
+
+<QuasirandomComparison client:load />
+
+The $R_2$ sequence fixes this by generalizing the golden ratio to two dimensions using the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $g \approx 1.3247$.
+
+<Callout variant="remark">
+  The plastic ratio is the real root of $x^3 = x + 1$. It is also the smallest
+  [Pisot number](https://en.wikipedia.org/wiki/Pisot-Vijayaraghavan_number).
+</Callout>
+
+$R_2$ uses two offsets derived from the plastic rato.
+
+$$
+    \alpha_1 = \frac{1}{g}, \quad \alpha_2 = \frac{1}{g^2}
+$$
+
+The sequence is then
+
+$$
+\begin{split}
+    \mathbf{p}_n &= \left(n \cdot \alpha_1 + x_0,\; n \cdot \alpha_2 + y_0\right) \mod 1 \\
+    &= \left(\frac{n}{g} + x_0,\; \frac{n}{g^2} + y_0\right) \mod 1
+\end{split}
+$$
