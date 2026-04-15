@@ -31,35 +31,19 @@ function ScatterPlot({
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         width={SIZE}
         height={SIZE}
-        className="block rounded border border-border bg-[#0c0c0e]"
+        className="border-border block rounded border bg-[#0c0c0e]"
       >
         {/* grid */}
         {[1, 2, 3].map((i) => (
           <g key={i} stroke="rgba(255,255,255,0.04)" strokeWidth={0.5}>
-            <line
-              x1={(i / 4) * SIZE}
-              y1={0}
-              x2={(i / 4) * SIZE}
-              y2={SIZE}
-            />
-            <line
-              y1={(i / 4) * SIZE}
-              x1={0}
-              y2={(i / 4) * SIZE}
-              x2={SIZE}
-            />
+            <line x1={(i / 4) * SIZE} y1={0} x2={(i / 4) * SIZE} y2={SIZE} />
+            <line y1={(i / 4) * SIZE} x1={0} y2={(i / 4) * SIZE} x2={SIZE} />
           </g>
         ))}
 
         {/* points */}
         {points.map(([x, y], i) => (
-          <circle
-            key={i}
-            cx={x * SIZE}
-            cy={y * SIZE}
-            r={R}
-            fill={color}
-          />
+          <circle key={i} cx={x * SIZE} cy={y * SIZE} r={R} fill={color} />
         ))}
       </svg>
     </div>
@@ -67,7 +51,7 @@ function ScatterPlot({
 }
 
 export default function QuasirandomComparison() {
-  const [count, setCount] = useState(100)
+  const [count, setCount] = useState(3)
 
   const r1 = useMemo<[number, number][]>(() => {
     const a = 1 / PHI
@@ -89,7 +73,7 @@ export default function QuasirandomComparison() {
   const pct = ((count - 1) / 499) * 100
 
   return (
-    <div className="my-8 flex flex-col gap-5 rounded-lg border border-border bg-[#111113] p-6">
+    <div className="border-border my-8 flex flex-col gap-5 rounded-lg border bg-[#111113] p-6">
       <div className="flex flex-wrap justify-center gap-6">
         <ScatterPlot
           points={r1}
@@ -104,7 +88,7 @@ export default function QuasirandomComparison() {
       </div>
 
       <div className="mx-auto flex w-full max-w-[624px] flex-col gap-2">
-        <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
+        <div className="text-muted-foreground flex justify-between font-mono text-[11px]">
           <span>1</span>
           <span className="text-foreground">
             n = <span className="font-medium">{count}</span>

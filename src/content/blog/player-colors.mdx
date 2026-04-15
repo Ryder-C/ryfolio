@@ -177,17 +177,17 @@ So why not just run two $R_1$ sequences, one for $a$ and one for $b$? Well, we e
 
 <QuasirandomComparison client:load />
 
-The $R_2$ sequence fixes this by generalizing the golden ratio to two dimensions using the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $g \approx 1.3247$.
+The $R_2$ sequence fixes this by generalizing the golden ratio to two dimensions using the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $\rho \approx 1.3247$. Just as $\varphi$ is the most irrational number in 1D (hardest to approximate by rationals) the plastic ratio produces the pair of numbers that are hardest to approximate simultaneously.
 
 <Callout variant="remark">
   The plastic ratio is the real root of $x^3 = x + 1$. It is also the smallest
   [Pisot number](https://en.wikipedia.org/wiki/Pisot-Vijayaraghavan_number).
 </Callout>
 
-$R_2$ uses two offsets derived from the plastic rato.
+$R_2$ uses two offsets derived from the plastic rato. You want to choose them such that they are jointly irrational in a way that prevents alignment along any axis.
 
 $$
-    \alpha_1 = \frac{1}{g}, \quad \alpha_2 = \frac{1}{g^2}
+    \alpha_1 = \frac{1}{\rho}, \quad \alpha_2 = \frac{1}{\rho^2}
 $$
 
 The sequence is then
@@ -195,6 +195,6 @@ The sequence is then
 $$
 \begin{split}
     \mathbf{p}_n &= \left(n \cdot \alpha_1 + x_0,\; n \cdot \alpha_2 + y_0\right) \mod 1 \\
-    &= \left(\frac{n}{g} + x_0,\; \frac{n}{g^2} + y_0\right) \mod 1
+    &= \left(\frac{n}{\rho} + x_0,\; \frac{n}{\rho^2} + y_0\right) \mod 1
 \end{split}
 $$

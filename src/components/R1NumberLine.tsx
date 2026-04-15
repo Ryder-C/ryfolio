@@ -11,11 +11,10 @@ const H = 48
 const PAD = 16
 
 export default function R1NumberLine() {
-  const [count, setCount] = useState(10)
+  const [count, setCount] = useState(3)
 
   const points = useMemo(
-    () =>
-      Array.from({ length: count }, (_, n) => frac(n * (1 / PHI) + 0.5)),
+    () => Array.from({ length: count }, (_, n) => frac(n * (1 / PHI) + 0.5)),
     [count],
   )
 
@@ -23,8 +22,8 @@ export default function R1NumberLine() {
   const inner = W - PAD * 2
 
   return (
-    <div className="my-8 flex flex-col gap-4 rounded-lg border border-border bg-[#111113] p-6">
-      <span className="font-mono text-[10px] tracking-widest uppercase text-[rgba(139,180,255,0.8)]">
+    <div className="border-border my-8 flex flex-col gap-4 rounded-lg border bg-[#111113] p-6">
+      <span className="font-mono text-[10px] tracking-widest text-[rgba(139,180,255,0.8)] uppercase">
         R1 Sequence
       </span>
 
@@ -94,7 +93,7 @@ export default function R1NumberLine() {
       </svg>
 
       <div className="flex flex-col gap-2">
-        <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
+        <div className="text-muted-foreground flex justify-between font-mono text-[11px]">
           <span>1</span>
           <span className="text-foreground">
             n = <span className="font-medium">{count}</span>
