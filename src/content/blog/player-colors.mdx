@@ -8,6 +8,8 @@ tags: ['Math', 'Rust']
 import Callout from '@/components/callout.astro'
 import QuasirandomComparison from '@/components/QuasirandomComparison'
 import R1NumberLine from '@/components/R1NumberLine'
+import PerceptualColorDemo from '@/components/PerceptualColorDemo'
+import ColorPaletteDemo from '@/components/ColorPaletteDemo'
 
 I was working on my game [Ryguessr](/projects/ryguessr) when I came to the problem of choosing random colors for players. Naively, I tried:
 
@@ -16,11 +18,14 @@ I was working on my game [Ryguessr](/projects/ryguessr) when I came to the probl
 
 I wanted something that **(a)** produces a stream of colors that are _actually_ perceptually distinct, **(b)** dynamically makes color choices even after players change their color or leave the game, and **(c)** has very low computational cost. Almost everything is in one file: [`server/src/colors.rs`](https://github.com/AdinAck/ryguessr/blob/main/server/src/colors.rs) so feel free to check it out.
 
+<Callout variant="remark">
+  To be clear, none of this was necessary. A fixed palette of a dozen nice
+  colors would have been fine. But "fine" is boring.
+</Callout>
+
 ## Working in a perceptual color space
 
-Humans don't see distances in color the same way that monitors emit it. Two pairs of sRGB colors can be the same Euclidean distance apart and one pair may look very perceptually different compared to the other. So choosing random colors in this type of space is only going to make things more difficult.
-
-The fix is to move into a **perceptually uniform color space**, where Euclidean distance accurately tracks perceived difference.
+Humans don't see distances in color the same way that monitors emit it. Two pairs of sRGB colors can be the same Euclidean distance apart, yet one pair may look nearly identical while the other looks completely different. The fix is to move into a **perceptually uniform color space**, where Euclidean distance accurately tracks perceived difference.
 
 <Callout
   title="Perceptually Uniform Color Space"
@@ -31,14 +36,19 @@ The fix is to move into a **perceptually uniform color space**, where Euclidean 
   to how different those colors look to human eyes.
 </Callout>
 
-I settled on [**OKLAB**](https://en.wikipedia.org/wiki/Oklab_color_space), a
-successor to [**CIELAB**](https://en.wikipedia.org/wiki/CIELAB_color_space) with
-some fixes. The conversion is also very cheap, just two $3 \times 3$ matrices
-and a cube.
+I settled on [**OKLAB**](https://en.wikipedia.org/wiki/Oklab_color_space), a successor to [**CIELAB**](https://en.wikipedia.org/wiki/CIELAB_color_space) with blue/purple hue distortion fixed. The conversion is also very cheap, just two $3 \times 3$ matrices and a cube. You can see the difference clearly by interpolating between different pairs of colors, equal steps in RGB produce very different perceptual steps, while equal steps in OKLAB look evenly spaced.
+
+<PerceptualColorDemo client:load />
+
+<Callout variant="remark">
+  Part of the sRGB row's muddiness is gamma encoding rather than perceptual
+  non-uniformity, but since sRGB is what monitors actually display, it's a fair
+  comparison. OKLAB addresses both.
+</Callout>
 
 ### OKLAB &rarr; LMS &rarr; linear sRGB
 
-OKLAB is built on top of a [LMS](https://en.wikipedia.org/wiki/LMS_color_space), a color space that models the response of the three types of cones in the human eye:
+OKLAB is built on top of [LMS](https://en.wikipedia.org/wiki/LMS_color_space), a color space that models the response of the three types of cones in the human eye:
 
 - L &rarr; long-wavelength, <span style={{color: '#9DFF00'}}>yellowish-green</span>
 - M &rarr; medium-wavelength, <span style={{color: '#00FF41'}}>green</span>
@@ -56,15 +66,16 @@ Here is the pipeline:
 1. First apply the matrix for OKLAB &rarr; LMS
 
 $$
-\begin{pmatrix} L' \ M' \ S' \end{pmatrix} = \begin{pmatrix} 1 &
+\begin{pmatrix} L' \\ M' \\ S' \end{pmatrix} = \begin{pmatrix} 1 &
 0.3963377774 & 0.2158037573 \\ 1 & -0.1055613458 & -0.0638541728 \\ 1 & -
 0.0894841775 & -1.2914855480 \end{pmatrix} \begin{pmatrix} L_\text{ok} \\ a \\ b
 \end{pmatrix}
 $$
 
 <Callout variant="intuition">
-  The first column of the transition matrix is all 1's because L (lightness)
-  contributes equally to all three cone types.
+  The first column of the transition matrix is all 1's because because moving
+  along the lightness axis should shift all three channels equally, which
+  corresponds to changing brightness without shifting hue.
 </Callout>
 
 2. Then cube
@@ -112,7 +123,16 @@ fn oklab_to_linear_srgb(lab: [f64; 3]) -> [f64; 3] {
 
 ### Linear sRGB &rarr; sRGB (gamma encoding)
 
-Monitor sRGB is gamma-encoded. The forward transfer function is
+Before we can display the colors to the monitor, we need to apply **gamma encoding**. The sRGB values received by your monitor are not _linear_ measures of light intensity. If you double the sRGB value $64 \rightarrow 128$, you don't get twice as much light coming out of that pixel.
+
+<Callout variant="intuition">
+  Human eyes can perceive differences in dark shades better than bright ones. If
+  we stored brightness linearly in 8 bits, we'd waste most of our 256 values on
+  bright shades that all look the same, while banding would appear in the darks
+  where we can actually see the difference.
+</Callout>
+
+This is why we can't just scale our linear sRGB output by 255. We need to apply sRGB's transfer function first:
 
 $$
 c = \begin{cases} 12.92 \, c_{\text{lin}} & c_{\text{lin}} \le 0.0031308 \\[4pt] 1.055 \, c_{\text{lin}}^{1/2.4} - 0.055 & c_{\text{lin}} > 0.0031308 \end{cases}
@@ -139,11 +159,9 @@ We clamp each channel into $[0, 1]$ because there exist points in OKLAB that tra
   posts](https://bottosson.github.io/posts/gamutclipping/).
 </Callout>
 
-## Sampling OKLAB: the $R_2$ quasirandom sequence
+## Sampling OKLAB: the $R_3$ quasirandom sequence
 
-Now I have a nice perceptual space that I can convert to sRGB.
-
-So how do I generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$?
+Now I have a nice perceptual space that I can convert to sRGB. The next question is how do I generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$?
 
 What we really want is a [low-discrepancy sequence](https://en.wikipedia.org/wiki/Low-discrepancy_sequence) (Also called a quasirandom sequence).
 
@@ -152,26 +170,21 @@ What we really want is a [low-discrepancy sequence](https://en.wikipedia.org/wik
   low-discrepancy sequence fills the space more uniformly than random sampling.
 </Callout>
 
-### Why the $R_2$ sequence?
-
-We need a two dimensional low-discrepency sequence. But wait, OKLAB is a three dimensional space. Shouldn't we be sampling in three dimensions?
-
-{/* prettier-ignore */}
-<Callout variant="recall">
-    OKLAB is three dimensional:
-    - $L$ (lightness)
-    - $a$ (green-red)
-    - $b$ (blue-yellow)
+<Callout variant="note">
+  There are several well known low-discrepancy sequences (Halton, Sobol,
+  Hammersley), but I went with the $R_d$ family (popularized by [Martin
+  Roberts](https://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/)).
+  It has no base or direction numbers to pick, the recurrence is a single
+  multiply and mod, and it performs comparably to Halton for our purposes. It's
+  also the most elegant in my opinion, which matters when you're doing something
+  unnecessary anyway.
 </Callout>
 
-We want all player colors to be equally readable on the map. If we let lightness vary randomly then some players would get washed-out colors and other dark muddy colors.
+OKLAB is three dimensional, so we need a 3D low-discrepancy sequence. The simplest option is to run independent one-dimensional sequences on each axis and hope it works out. It doesn't, but walking through why is the cleanest way to motivate what we actually use.
 
-<Callout variant="solution" defaultOpen={false}>
-  We can fix this by just sampling from a two dimensional slice of OKLAB where
-  $L$ is fixed to some value we choose.
-</Callout>
+### Starting in 1D: the golden ratio
 
-So we only need to fill the $a$-$b$ plane. A natural first idea is the $R_1$ sequence. Given the golden ratio $\varphi = \frac{1+\sqrt{5}}{2}$, the sequence is defined as
+Given the golden ratio $\varphi = \frac{1+\sqrt{5}}{2}$, the $R_1$ sequence is
 
 $$
     x_n = \frac{n}{\varphi} + x_0 \mod 1
@@ -181,28 +194,104 @@ where $x_0$ is a seed offset. This sequence works beautifully in one dimension:
 
 <R1NumberLine client:load />
 
-So why not just run two $R_1$ sequences, one for $a$ and one for $b$? Well, we end up with points that are nicely spaced when projected to the $a$ or $b$ axis, but when looking at them in two dimensions we see obvious clumping along diagonal lines:
+### Stacking 1D sequences doesn't work
+
+The obvious next move is to run one $R_1$ sequence per axis with different seeds. Each axis ends up individually well spaced, but the points clump along diagonal lines when you look at them together:
 
 <QuasirandomComparison client:load />
 
-The $R_2$ sequence fixes this by generalizing the golden ratio to two dimensions using the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $\rho \approx 1.3247$. Just as $\varphi$ is the most irrational number in 1D (hardest to approximate by rationals) the plastic ratio produces the pair of numbers that are hardest to approximate simultaneously.
+### Generalizing to higher dimensions
+
+The fix is to generalize the golden ratio to higher dimensions. In 2D we use the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $\rho \approx 1.3247$, the real root of $x^3 = x + 1$. Just as $\varphi$ is the most irrational number in 1D (hardest to approximate with rationals), the plastic ratio's powers $\frac{1}{\rho}$ and $\frac{1}{\rho^2}$ are the 2D equivalent (the pair hardest to approximate jointly by rationals).
 
 <Callout variant="remark">
-  The plastic ratio is the real root of $x^3 = x + 1$. It is also the smallest
-  [Pisot number](https://en.wikipedia.org/wiki/Pisot-Vijayaraghavan_number).
+  The plastic ratio is also the smallest [Pisot
+  number](https://en.wikipedia.org/wiki/Pisot-Vijayaraghavan_number).
 </Callout>
 
-$R_2$ uses two offsets derived from the plastic rato. You want to choose them such that they are jointly irrational in a way that prevents alignment along any axis.
+For 3D we step up one more dimension. We want the real root of $x^4 = x + 1$, which I call $\varphi_3$ ($\approx 1.2207$). The offsets are its first three powers:
 
 $$
-    \alpha_1 = \frac{1}{\rho}, \quad \alpha_2 = \frac{1}{\rho^2}
+    \alpha_1 = \frac{1}{\varphi_3}, \quad \alpha_2 = \frac{1}{\varphi_3^2}, \quad \alpha_3 = \frac{1}{\varphi_3^3}
 $$
 
-The sequence is then
+And the $R_3$ sequence is
 
 $$
-\begin{split}
-    \mathbf{p}_n &= \left(n \cdot \alpha_1 + x_0,\; n \cdot \alpha_2 + y_0\right) \mod 1 \\
-    &= \left(\frac{n}{\rho} + x_0,\; \frac{n}{\rho^2} + y_0\right) \mod 1
-\end{split}
+    \mathbf{p}_n = \left(n \cdot \alpha_1 + x_0,\; n \cdot \alpha_2 + y_0,\; n \cdot \alpha_3 + z_0\right) \mod 1
 $$
+
+Each new point tends to land in a large gap left by the previous points, because the irrational step sizes never align into a repeating pattern along any axis or diagonal.
+
+### Mapping $R_3$ into OKLAB
+
+$R_3$ generates points in the unit cube $[0,1]^3$, but OKLAB is not entirely inside that cube. $L \in [0,1]$, but $a,b$ are roughly bounded by $\pm 0.4$ with only a small slice of that producing colors that are in the sRGB space. We linearly map each $R_3$ coordinate into a chosen range:
+
+```rust title="server/src/colors.rs"
+const L_RANGE: (f64, f64) = (0.35, 0.85);
+const A_RANGE: (f64, f64) = (-0.15, 0.15);
+const B_RANGE: (f64, f64) = (-0.15, 0.15);
+```
+
+Two things are happening here.
+
+1. **Lightness stays in the middle.** Values below $0.35$ are too muddy and dark and above $0.85$ they look washed out. So we clamp between those values.
+
+<Callout variant="note" defaultOpen={false}>
+  It's tempting to just fix $L$ to a single value and sample 2D, but that costs
+  you a lot of vibrance with certain colors. Vivid yellows need high $L$ and
+  rich blues need lower $L$. Letting $L$ vary across a band keeps the full hue
+  wheel available.
+</Callout>
+
+2. **Chroma stays low enough.** The $\pm 0.15$ bounds on $a$ and $b$ keep us mostly inside the sRGB gamut so the clamping mentioned in the previous section is rarely needed.
+
+## Handling players joining and leaving
+
+Generating the $n$-th color is easy. The harder part is staying perceptually distinct as players come and go, without causing existing player colors to change.
+
+The approach I took is each player holds onto their index for the lifetime of their session. When a player leaves, their index goes back into a pool of returnable indices. When a new player joins, attempt to reuse a returned index before advancing to a new one.
+
+```rust title="server/src/colors.rs"
+pub struct DistinctColors {
+    seed: [f64; 3],
+    next_index: usize,
+    returned_indices: BTreeSet<usize>,
+}
+```
+
+But players can also pick their own custom colors and we don't want the server's generated colors to collide with those either. So when we try to get a color for a player, we don't just grab the immediate next index, but we check that its color is significantly perceptually distinct from every color currently in the lobby.
+
+So our `next_filtered` function runs through two parts:
+
+1. **Try returned indices first.** For each returned index, check whether its color is distinct from the currently occupied colors. If yes, use it. If not, put it back in the pool and keep looking.
+2. **Fall back to fresh indices.** If no returned index works, advance `next_index`. If that color happens to be too close to an already occupied one (someone's custom color), then put that index in `returned_indices` and get the next one.
+
+This way even a fresh index that gets blocked by a custom color isn't wasted, it's just waiting to be used from the pool of returned indices.
+
+There's one issue. If a returned index doesn't work on this allocation, we put it back and it stays in the pool. This means the pool can grow if the currently-occupied colors keep blocking the same returned indices. In practice the pool size is bounded by the number of players who have ever been in the game, which for Ryguessr is small enough not to matter.
+
+<Callout variant="note">
+  The filter only guards generated colors against occupied ones. For example,
+  two players who both pick <span style={{ color: '#ff0000' }}>#ff0000</span> as
+  a custom color will still collide. Preventing this goes against my idea of not
+  wanting to change existing colors so I just let it be.
+</Callout>
+
+### How close is too close?
+
+Two colors count as "distinct" if their Euclidean distance in OKLAB is at least 0.04. Where does that number come from?
+
+0.01 to 0.02 is often cited as the just noticable difference in OKLAB. So you would have a hard time telling the difference between a pair of colors with that distance. For example <span style={{ color: '#4a90e2'}}>#4a90e2</span> and <span style={{ color: '#5e8ce1'}}>#5e8c1</span> have a distance of approximately 0.02. Choosing 0.04 gives a comfortable margin where colors remain clearly distinguishable.
+
+```rust title="server/src/colors.rs"
+const THRESHOLD_SQ: f64 = 0.04 * 0.04;
+```
+
+## Results
+
+Here's what the first 20 colors look like with a random seed:
+
+<ColorPaletteDemo client:load />
+
+Reshuffle the seed to see a different set. Every run produces 20 distinct, roughly equally perceptually spaced colors.
