@@ -57,19 +57,47 @@ import { Icon } from 'astro-icon/components'
       localStorage.setItem('theme', newTheme)
     })
 
+    if (newTheme === 'dark') {
+      const style = document.createElement('style')
+      style.textContent = `
+        ::view-transition-old(root) { z-index: 9999; }
+        ::view-transition-new(root) { z-index: 1; }
+      `
+      document.head.appendChild(style)
+      transition.finished.then(() => style.remove())
+    }
+
     transition.ready.then(() => {
-      const clipPath = [
-        `circle(0px at ${x}px ${y}px)`,
-        `circle(${maxR}px at ${x}px ${y}px)`,
-      ]
-      document.documentElement.animate(
-        { clipPath },
-        {
-          duration: 500,
-          easing: 'ease-in-out',
-          pseudoElement: '::view-transition-new(root)',
-        },
-      )
+      if (newTheme === 'light') {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${maxR}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 500,
+            easing: 'ease-in-out',
+            pseudoElement: '::view-transition-new(root)',
+          },
+        )
+      } else {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(${maxR}px at ${x}px ${y}px)`,
+              `circle(0px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 500,
+            easing: 'ease-in-out',
+            fill: 'forwards',
+            pseudoElement: '::view-transition-old(root)',
+          },
+        )
+      }
     })
   }
 

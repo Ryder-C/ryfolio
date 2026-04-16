@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 
 const PHI = (1 + Math.sqrt(5)) / 2
 
@@ -10,8 +10,28 @@ const W = 624
 const H = 48
 const PAD = 16
 
+function useTheme() {
+  const [theme, setTheme] = useState('light')
+
+  useEffect(() => {
+    setTheme(document.documentElement.getAttribute('data-theme') ?? 'light')
+    const observer = new MutationObserver(() => {
+      setTheme(document.documentElement.getAttribute('data-theme') ?? 'light')
+    })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    })
+    return () => observer.disconnect()
+  }, [])
+
+  return theme
+}
+
 export default function R1NumberLine() {
   const [count, setCount] = useState(3)
+  const theme = useTheme()
+  const isDark = theme === 'dark'
 
   const points = useMemo(
     () => Array.from({ length: count }, (_, n) => frac(n * (1 / PHI) + 0.5)),
@@ -21,9 +41,32 @@ export default function R1NumberLine() {
   const pct = ((count - 1) / 99) * 100
   const inner = W - PAD * 2
 
+  const axisColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
+  const tickColor = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)'
+  const labelColor = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)'
+  const pointColor = isDark ? 'rgba(139,180,255,0.6)' : 'rgba(59,130,246,0.7)'
+  const accentColor = isDark ? 'rgba(139,180,255,0.8)' : 'rgba(37,99,235,0.85)'
+  const bgColor = isDark ? '#111113' : '#f8f8fa'
+  const sliderFill = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'
+  const sliderTrack = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+  const sliderThumb = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)'
+
   return (
-    <div className="border-border my-8 flex flex-col gap-4 rounded-lg border bg-[#111113] p-6">
-      <span className="font-mono text-[10px] tracking-widest text-[rgba(139,180,255,0.8)] uppercase">
+    <div
+      className="border-border my-8 flex flex-col gap-4 rounded-lg border p-6"
+      style={
+        {
+          background: bgColor,
+          '--slider-fill': sliderFill,
+          '--slider-track': sliderTrack,
+          '--slider-thumb': sliderThumb,
+        } as React.CSSProperties
+      }
+    >
+      <span
+        className="font-mono text-[10px] tracking-widest uppercase"
+        style={{ color: accentColor }}
+      >
         R1 Sequence
       </span>
 
@@ -38,7 +81,7 @@ export default function R1NumberLine() {
           y1={H / 2}
           x2={W - PAD}
           y2={H / 2}
-          stroke="rgba(255,255,255,0.12)"
+          stroke={axisColor}
           strokeWidth={1}
         />
 
@@ -48,7 +91,7 @@ export default function R1NumberLine() {
           y1={H / 2 - 6}
           x2={PAD}
           y2={H / 2 + 6}
-          stroke="rgba(255,255,255,0.2)"
+          stroke={tickColor}
           strokeWidth={1}
         />
         <line
@@ -56,14 +99,14 @@ export default function R1NumberLine() {
           y1={H / 2 - 6}
           x2={W - PAD}
           y2={H / 2 + 6}
-          stroke="rgba(255,255,255,0.2)"
+          stroke={tickColor}
           strokeWidth={1}
         />
         <text
           x={PAD}
           y={H / 2 + 18}
           textAnchor="middle"
-          fill="rgba(255,255,255,0.3)"
+          fill={labelColor}
           fontSize={9}
           fontFamily="Geist Mono, ui-monospace, monospace"
         >
@@ -73,7 +116,7 @@ export default function R1NumberLine() {
           x={W - PAD}
           y={H / 2 + 18}
           textAnchor="middle"
-          fill="rgba(255,255,255,0.3)"
+          fill={labelColor}
           fontSize={9}
           fontFamily="Geist Mono, ui-monospace, monospace"
         >
@@ -87,7 +130,7 @@ export default function R1NumberLine() {
             cx={PAD + x * inner}
             cy={H / 2}
             r={4}
-            fill="rgba(139, 180, 255, 0.6)"
+            fill={pointColor}
           />
         ))}
       </svg>
@@ -119,8 +162,8 @@ export default function R1NumberLine() {
           border-radius: 1px;
           background: linear-gradient(
             to right,
-            rgba(255,255,255,0.45) var(--pct),
-            rgba(255,255,255,0.1) var(--pct)
+            var(--slider-fill) var(--pct),
+            var(--slider-track) var(--pct)
           );
           outline: none;
         }
@@ -129,7 +172,7 @@ export default function R1NumberLine() {
           width: 12px;
           height: 12px;
           border-radius: 50%;
-          background: rgba(255,255,255,0.85);
+          background: var(--slider-thumb);
           border: none;
           cursor: pointer;
         }
@@ -137,7 +180,7 @@ export default function R1NumberLine() {
           width: 12px;
           height: 12px;
           border-radius: 50%;
-          background: rgba(255,255,255,0.85);
+          background: var(--slider-thumb);
           border: none;
           cursor: pointer;
         }

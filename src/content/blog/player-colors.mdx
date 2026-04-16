@@ -12,9 +12,9 @@ import R1NumberLine from '@/components/R1NumberLine'
 I was working on my game [Ryguessr](/projects/ryguessr) when I came to the problem of choosing random colors for players. Naively, I tried:
 
 - **Picking a random hex color**, led to players sometimes getting near-identical colors and no one can tell the pins apart on the map.
-- **Rotating through a fixed amount of "nice" colors**, works until a 9th player joins.
+- **Rotating through a fixed amount of "nice" colors**, works but I didn't want to restrict the number of players or give duplicate colors.
 
-I wanted something that (a) produces a stream of colors that are _actually_ perceptually distinct, (b) dynamically makes color choices even after players change their color or leave the game, and (c) has very low computational cost. Almost everything is in one file: [`server/src/colors.rs`](https://github.com/AdinAck/ryguessr/blob/main/server/src/colors.rs) so feel free to check it out.
+I wanted something that **(a)** produces a stream of colors that are _actually_ perceptually distinct, **(b)** dynamically makes color choices even after players change their color or leave the game, and **(c)** has very low computational cost. Almost everything is in one file: [`server/src/colors.rs`](https://github.com/AdinAck/ryguessr/blob/main/server/src/colors.rs) so feel free to check it out.
 
 ## Working in a perceptual color space
 
@@ -38,7 +38,11 @@ and a cube.
 
 ### OKLAB &rarr; LMS &rarr; linear sRGB
 
-OKLAB is built on top of a [LMS](https://en.wikipedia.org/wiki/LMS_color_space), a color space that models the response of the three types of cones in the human eye: L (long-wavelength, red), M (medium-wavelength, green), and S (short-wavelength, blue).
+OKLAB is built on top of a [LMS](https://en.wikipedia.org/wiki/LMS_color_space), a color space that models the response of the three types of cones in the human eye:
+
+- L &rarr; long-wavelength, <span style={{color: '#9DFF00'}}>yellowish-green</span>
+- M &rarr; medium-wavelength, <span style={{color: '#00FF41'}}>green</span>
+- S &rarr; short-wavelength, <span style={{color: '#6600FF'}}>purple</span>
 
 Here is the pipeline:
 
@@ -129,7 +133,11 @@ fn linear_to_srgb(c: f64) -> f64 {
 
 We clamp each channel into $[0, 1]$ because there exist points in OKLAB that translate to points outside of the sRGB space. This is easy but it's not a true perceptual nearest-point projection, so far out colors can shift hue slightly. This shouldn't really be visible in practice though.
 
-The proper way to do this is explained by Björn Ottosson (the creator of OKLAB) in [one of his blog posts](https://bottosson.github.io/posts/gamutclipping/).
+<Callout variant="note">
+  The proper way to do this is explained by Björn Ottosson (the creator of
+  OKLAB) in [one of his blog
+  posts](https://bottosson.github.io/posts/gamutclipping/).
+</Callout>
 
 ## Sampling OKLAB: the $R_2$ quasirandom sequence
 
