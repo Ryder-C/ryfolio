@@ -44,46 +44,6 @@ curl -fsSL https://raw.githubusercontent.com/Ryder-C/rycharger/main/install.sh |
 
 This installs the binary to `~/.local/bin/rycharger`, sets up a udev rule (requires sudo) so your user can write to the sysfs charge threshold without root, and enables a systemd user service that starts automatically on login.
 
-### Docker
-
-```bash
-docker run -d \
-  --name rycharger \
-  --restart unless-stopped \
-  --privileged \
-  -v /sys/class/power_supply:/sys/class/power_supply \
-  -v rycharger-data:/var/lib/rycharger \
-  ghcr.io/ryder-c/rycharger:latest
-```
-
-The image stores both the config file and the SQLite database under `/var/lib/rycharger/`, so the single named volume persists everything.
-
-<Callout variant="warning">
-  `--privileged` is required to write to sysfs. If you prefer not to use it, you
-  can grant write access via the udev rule in the Linux install script and mount
-  only the specific battery path instead.
-</Callout>
-
-Or with Docker Compose:
-
-```yaml
-services:
-  rycharger:
-    image: ghcr.io/ryder-c/rycharger:latest
-    restart: unless-stopped
-    privileged: true
-    volumes:
-      - /sys/class/power_supply:/sys/class/power_supply
-      - rycharger-data:/var/lib/rycharger
-
-volumes:
-  rycharger-data:
-```
-
-```bash
-docker compose up -d
-```
-
 ### NixOS
 
 Add rycharger to your flake inputs:
@@ -137,7 +97,6 @@ Paths follow the [XDG base-dir spec](https://specifications.freedesktop.org/base
 | ------------ | --------------------------------- | --------------------------------------- |
 | Linux script | `~/.config/rycharger/config.toml` | `~/.local/share/rycharger/rycharger.db` |
 | NixOS module | `/etc/rycharger/config.toml`      | `/var/lib/rycharger/rycharger.db`       |
-| Docker       | `/var/lib/rycharger/config.toml`  | `/var/lib/rycharger/rycharger.db`       |
 
 ## License
 
