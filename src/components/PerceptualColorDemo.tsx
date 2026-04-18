@@ -158,7 +158,7 @@ export default function PerceptualColorDemo() {
   const rgbColors = useMemo(() => makeRgbGradient(from, to), [from, to])
   const oklabColors = useMemo(() => makeOklabGradient(from, to), [from, to])
 
-  const bgColor = isDark ? '#111113' : '#f8f8fa'
+  const bgColor = 'color-mix(in oklab, var(--muted) 25%, transparent)'
   const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'
   const btnBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
   const btnActiveBackground = isDark

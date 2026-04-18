@@ -10,6 +10,7 @@ import QuasirandomComparison from '@/components/QuasirandomComparison'
 import R1NumberLine from '@/components/R1NumberLine'
 import PerceptualColorDemo from '@/components/PerceptualColorDemo'
 import ColorPaletteDemo from '@/components/ColorPaletteDemo'
+import FunctionGrapher from '@/components/FunctionGrapher'
 
 I was working on my game [Ryguessr](/projects/ryguessr) when I came to the problem of choosing random colors for players. Naively, I tried:
 
@@ -54,7 +55,7 @@ OKLAB is built on top of [LMS](https://en.wikipedia.org/wiki/LMS_color_space), a
 - M &rarr; medium-wavelength, <span style={{color: '#00FF41'}}>green</span>
 - S &rarr; short-wavelength, <span style={{color: '#6600FF'}}>purple</span>
 
-Here is the pipeline:
+Here are the steps:
 
 {/* prettier-ignore */}
 <Callout variant="notation">
@@ -137,6 +138,21 @@ This is why we can't just scale our linear sRGB output by 255. We need to apply 
 $$
 c = \begin{cases} 12.92 \, c_{\text{lin}} & c_{\text{lin}} \le 0.0031308 \\[4pt] 1.055 \, c_{\text{lin}}^{1/2.4} - 0.055 & c_{\text{lin}} > 0.0031308 \end{cases}
 $$
+
+<FunctionGrapher
+  functions={[
+    {
+      expr: 'x <= 0.0031308 ? 12.92 * x : 1.055 * pow(x, 1 / 2.4) - 0.055',
+      label: 'sRGB (gamma encoded)',
+    },
+    { expr: 'x', label: 'linear' },
+  ]}
+  xMin={0}
+  xMax={1}
+  yMin={0}
+  yMax={1}
+  client:load
+/>
 
 Which we can see in our code:
 

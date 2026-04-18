@@ -184,7 +184,7 @@ export default function ColorPaletteDemo() {
     [seed],
   )
 
-  const bgColor = isDark ? '#111113' : '#f8f8fa'
+  const bgColor = 'color-mix(in oklab, var(--muted) 25%, transparent)'
   const accentColor = isDark ? 'rgba(139,180,255,0.8)' : 'rgba(37,99,235,0.85)'
   const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'
   const btnBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'

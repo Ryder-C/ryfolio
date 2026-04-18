@@ -46,7 +46,7 @@ export default function R1NumberLine() {
   const labelColor = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)'
   const pointColor = isDark ? 'rgba(139,180,255,0.6)' : 'rgba(59,130,246,0.7)'
   const accentColor = isDark ? 'rgba(139,180,255,0.8)' : 'rgba(37,99,235,0.85)'
-  const bgColor = isDark ? '#111113' : '#f8f8fa'
+  const bgColor = 'color-mix(in oklab, var(--muted) 25%, transparent)'
   const sliderFill = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'
   const sliderTrack = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
   const sliderThumb = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)'

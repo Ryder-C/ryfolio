@@ -97,7 +97,7 @@ export default function QuasirandomComparison() {
 
   const pct = ((count - 1) / 499) * 100
 
-  const bgColor = isDark ? '#111113' : '#f8f8fa'
+  const bgColor = 'color-mix(in oklab, var(--muted) 25%, transparent)'
   const svgBg = isDark ? '#0c0c0e' : '#ffffff'
   const gridColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.06)'
   const blueColor = isDark ? 'rgba(139,180,255,0.6)' : 'rgba(59,130,246,0.7)'
