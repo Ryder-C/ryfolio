@@ -10,110 +10,80 @@ import QuasirandomComparison from '@/components/QuasirandomComparison'
 import R1NumberLine from '@/components/R1NumberLine'
 import PerceptualColorDemo from '@/components/PerceptualColorDemo'
 import ColorPaletteDemo from '@/components/ColorPaletteDemo'
+import SrgbDistanceDemo from '@/components/SrgbDistanceDemo'
 import FunctionGrapher from '@/components/FunctionGrapher'
 
-I was working on my game [Ryguessr](/projects/ryguessr) when I came to the problem of choosing random colors for players. Naively, I tried:
+I am currently working on [Ryguessr](/projects/ryguessr) (a geoguessr clone) and encountered the problem of choosing random
+colors for players. The naive approaches came with compromises:
 
-- **Picking a random hex color**, led to players sometimes getting near-identical colors and no one can tell the pins apart on the map.
-- **Rotating through a fixed amount of "nice" colors**, works but I didn't want to restrict the number of players or give duplicate colors.
+- **Picking a random hex color** led to players sometimes getting near-identical colors which made the map markers
+  hard to tell apart.
+- **Rotating through a pre-defined list of "nice" colors** works, but I didn't want to restrict the number of players or
+  give duplicate colors.
 
-I wanted something that **(a)** produces a stream of colors that are _actually_ perceptually distinct, **(b)** dynamically makes color choices even after players change their color or leave the game, and **(c)** has very low computational cost. Almost everything is in one file: [`server/src/colors.rs`](https://github.com/AdinAck/ryguessr/blob/main/server/src/colors.rs) so feel free to check it out.
+I wanted something that:
 
-<Callout variant="remark">
-  To be clear, none of this was necessary. A fixed palette of a dozen nice
-  colors would have been fine. But "fine" is boring.
-</Callout>
+- **(a)** produces a stream of colors that are _actually_ perceptually distinct.
+- **(b)** adapts when players change their color or leave.
+- **(c)** has very low computational cost.
 
 ## Working in a perceptual color space
 
-Humans don't see distances in color the same way that monitors emit it. Two pairs of sRGB colors can be the same Euclidean distance apart, yet one pair may look nearly identical while the other looks completely different. The fix is to move into a **perceptually uniform color space**, where Euclidean distance accurately tracks perceived difference.
+Humans don't see distances in color the same way that monitors emit it. Some two pairs of sRGB[^1] colors can be the same
+Euclidean distance apart, and yet one pair may look nearly identical while the other looks completely different.
 
-<Callout
-  title="Perceptually Uniform Color Space"
-  variant="definition"
-  defaultOpen={false}
->
+<SrgbDistanceDemo client:load />
+
+The fix is to instead use a **perceptually uniform color space**, where Euclidean distance accurately reflects perceived difference.
+
+<Callout title="Perceptually Uniform Color Space" variant="definition">
   A color space where the Euclidean distance between two points is proportional
-  to how different those colors look to human eyes.
+  to how different those colors look to the human eye.
 </Callout>
 
-I settled on [**OKLAB**](https://en.wikipedia.org/wiki/Oklab_color_space), a successor to [**CIELAB**](https://en.wikipedia.org/wiki/CIELAB_color_space) with blue/purple hue distortion fixed. The conversion is also very cheap, just two $3 \times 3$ matrices and a cube. You can see the difference clearly by interpolating between different pairs of colors, equal steps in RGB produce very different perceptual steps, while equal steps in OKLAB look evenly spaced.
+I settled on [**OKLAB**](https://en.wikipedia.org/wiki/Oklab_color_space)[^2] for this project, a 3D color space (like sRGB) with axes labled: $L$, $a$, and $b$.
 
-<PerceptualColorDemo client:load />
+You can clearly see the difference between these color spaces by interpolating different pairs of colors. Equal steps in sRGB produce very different perceptual steps, while equal steps in OKLAB _look_ equal as well.
 
-<Callout variant="remark">
-  Part of the sRGB row's muddiness is gamma encoding rather than perceptual
-  non-uniformity, but since sRGB is what monitors actually display, it's a fair
-  comparison. OKLAB addresses both.
+<PerceptualColorDemo client:load /> {/*rename rgb to srgb*/}
+
+<Callout variant="remark" defaultOpen={false}>
+  Part of the sRGB gradient's *muddiness* is [gamma
+  encoding](https://en.wikipedia.org/wiki/Gamma_correction) rather than
+  perceptual non-uniformity, but since sRGB is what monitors actually display,
+  it's a fair comparison. OKLAB addresses this as well.
 </Callout>
 
-### OKLAB &rarr; LMS &rarr; linear sRGB
+### OKLAB &rarr; linear sRGB
 
-OKLAB is built on top of [LMS](https://en.wikipedia.org/wiki/LMS_color_space), a color space that models the response of the three types of cones in the human eye:
+In order to display OKLAB colors, they must be converted to sRGB since that is what displays use. {/* Look into what color spaces monitors support for display */}
 
-- L &rarr; long-wavelength, <span style={{color: '#9DFF00'}}>yellowish-green</span>
-- M &rarr; medium-wavelength, <span style={{color: '#00FF41'}}>green</span>
-- S &rarr; short-wavelength, <span style={{color: '#6600FF'}}>purple</span>
-
-Here are the steps:
+OKLAB is defined as a transformation on top of [LMS](https://en.wikipedia.org/wiki/LMS_color_space) (a model of how the human eye responds to light), which is itself a transformation on top of linear sRGB. So converting OKLAB to linear sRGB is just unwinding that chain.
 
 {/* prettier-ignore */}
 <Callout variant="notation">
-    - $L_\text{ok}$ is perceptual lightness (0 = black, 1 = white).
+    - $l$ is perceptual luminosity, or brightness (0 = black, 1 = white).
     - $a$ is the green–red axis (negative green, positive red).
     - $b$ is the blue–yellow axis (negative blue, positive yellow).
 </Callout>
 
-1. First apply the matrix for OKLAB &rarr; LMS
-
-$$
-\begin{pmatrix} L' \\ M' \\ S' \end{pmatrix} = \begin{pmatrix} 1 &
-0.3963377774 & 0.2158037573 \\ 1 & -0.1055613458 & -0.0638541728 \\ 1 & -
-0.0894841775 & -1.2914855480 \end{pmatrix} \begin{pmatrix} L_\text{ok} \\ a \\ b
-\end{pmatrix}
-$$
-
-<Callout variant="intuition">
-  The first column of the transition matrix is all 1's because because moving
-  along the lightness axis should shift all three channels equally, which
-  corresponds to changing brightness without shifting hue.
-</Callout>
-
-2. Then cube
-
-$$
-L = (L')^3, \quad M = (M')^3, \quad S = (S')^3
-$$
-
-3. Then apply the matrix for LMS &rarr; linear sRGB
-
-$$
-\begin{pmatrix} R \\ G \\ B \end{pmatrix} =
-\begin{pmatrix}
-4.0767416621 & -3.3077115913 & 0.2309699292 \\
--1.2684380046 & 2.6097574011 & -0.3413193965 \\
--0.0041960863 & -0.7034186147 & 1.7076147010
-\end{pmatrix}
-\begin{pmatrix} L \\ M \\ S \end{pmatrix}
-$$
-
-Here is the code describing this process:
+{/* Add docstring here and change original code */}
 
 ```rust title="server/src/colors.rs"
-fn oklab_to_linear_srgb(lab: [f64; 3]) -> [f64; 3] {
-    let [l, a, b] = lab;
+fn oklab_to_linear_srgb([l, a, b]: [f64; 3]) -> [f64; 3] {
+    // OKLAB -> LMS
 
-    // Step 1
+    // conversion matrix
     let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
     let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
     let s_ = l - 0.0894841775 * a - 1.2914855480 * b;
 
-    // Step 2
+    // cube
     let l = l_.powi(3);
     let m = m_.powi(3);
     let s = s_.powi(3);
 
-    // Step 3
+    // LMS -> linear sRGB
     [
         4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
         -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
@@ -122,18 +92,21 @@ fn oklab_to_linear_srgb(lab: [f64; 3]) -> [f64; 3] {
 }
 ```
 
+The matrix constants and full derivation are in [Björn Ottosson's original OKLAB post](https://bottosson.github.io/posts/oklab/).
+
 ### Linear sRGB &rarr; sRGB (gamma encoding)
 
-Before we can display the colors to the monitor, we need to apply **gamma encoding**. The sRGB values received by your monitor are not _linear_ measures of light intensity. If you double the sRGB value $64 \rightarrow 128$, you don't get twice as much light coming out of that pixel.
+Before these colors can be displayed, **gamma encoding** must be applied. The sRGB values received by displays are not _linear_ measures of light intensity. Doubling an sRGB value (say $64 \rightarrow 128$), doesn't result in twice as much light being emitted.
 
 <Callout variant="intuition">
   Human eyes can perceive differences in dark shades better than bright ones. If
-  we stored brightness linearly in 8 bits, we'd waste most of our 256 values on
-  bright shades that all look the same, while banding would appear in the darks
-  where we can actually see the difference.
+  brightness was stored linearly in 8 bits, many of the 256 values would be
+  wasted on bright shades that are not visually distinguishable, while adjacent
+  dark shades are significantly different. _Recall [this
+  section](#working-in-a-perceptual-color-space)_.
 </Callout>
 
-This is why we can't just scale our linear sRGB output by 255. We need to apply sRGB's transfer function first:
+This is why the linear sRGB output cannot simply be scaled by 255. sRGB's transfer function must be applied first (this is called [gamma correction](https://en.wikipedia.org/wiki/Gamma_correction)):
 
 $$
 c = \begin{cases} 12.92 \, c_{\text{lin}} & c_{\text{lin}} \le 0.0031308 \\[4pt] 1.055 \, c_{\text{lin}}^{1/2.4} - 0.055 & c_{\text{lin}} > 0.0031308 \end{cases}
@@ -154,11 +127,11 @@ $$
   client:load
 />
 
-Which we can see in our code:
+In code:
 
 ```rust title="server/src/colors.rs"
 fn linear_to_srgb(c: f64) -> f64 {
-    let c = c.clamp(0.0, 1.0);
+    let c = c.clamp(0.0, 1.0); // clamp to remain in sRGB
     if c <= 0.0031308 {
         12.92 * c
     } else {
@@ -167,19 +140,19 @@ fn linear_to_srgb(c: f64) -> f64 {
 }
 ```
 
-We clamp each channel into $[0, 1]$ because there exist points in OKLAB that translate to points outside of the sRGB space. This is easy but it's not a true perceptual nearest-point projection, so far out colors can shift hue slightly. This shouldn't really be visible in practice though.
+There exists colors in OKLAB which correspond to no color in sRGB, as they exceed the bounds of the color space. Rather than making the color space transformation fallible, the transformed colors may simply be clamped to the sRGB color space. This, naturally, distorts the projection, so colors that project out-of-bounds will shift in hue slightly. In practice, this isn't a problem.
 
 <Callout variant="note">
   The proper way to do this is explained by Björn Ottosson (the creator of
-  OKLAB) in [one of his blog
-  posts](https://bottosson.github.io/posts/gamutclipping/).
+  OKLAB) in [his post on gamut
+  clipping](https://bottosson.github.io/posts/gamutclipping/).
 </Callout>
 
 ## Sampling OKLAB: the $R_3$ quasirandom sequence
 
-Now I have a nice perceptual space that I can convert to sRGB. The next question is how do I generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$?
+Now that we have a nice perceptual color space that can be converted to sRGB, the next question is: **How do we sample this space to produce maximally distinct colors?** To reword the problem formally, we need to generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$.
 
-What we really want is a [low-discrepancy sequence](https://en.wikipedia.org/wiki/Low-discrepancy_sequence) (Also called a quasirandom sequence).
+This is known as a [low-discrepancy sequence](https://en.wikipedia.org/wiki/Low-discrepancy_sequence) (also called a quasirandom sequence).
 
 <Callout variant="definition" title="Discrepancy">
   Discrepancy is a measure of how uniformly a sequence fills a space. A
@@ -195,10 +168,13 @@ What we really want is a [low-discrepancy sequence](https://en.wikipedia.org/wik
   also the most elegant in my opinion, which matters when you're doing something
   unnecessary anyway.
 </Callout>
+{/*greatly simplify note here*/}
 
-OKLAB is three dimensional, so we need a 3D low-discrepancy sequence. The simplest option is to run independent one-dimensional sequences on each axis and hope it works out. It doesn't, but walking through why is the cleanest way to motivate what we actually use.
+Since OKLAB is three dimensional, the low-discrepancy sequence (sampled colors) should be as well. The simplest option is to run independent one-dimensional sequences on each axis and hope it works out. It doesn't, but walking through _why_ is a nice way to demonstrate the motivation for the final solution.
 
 ### Starting in 1D: the golden ratio
+
+{/* explain why we are using Rd sequences */}
 
 Given the golden ratio $\varphi = \frac{1+\sqrt{5}}{2}$, the $R_1$ sequence is
 
@@ -214,16 +190,13 @@ where $x_0$ is a seed offset. This sequence works beautifully in one dimension:
 
 The obvious next move is to run one $R_1$ sequence per axis with different seeds. Each axis ends up individually well spaced, but the points clump along diagonal lines when you look at them together:
 
+{/* explain how offset changes the visual lines */}
+
 <QuasirandomComparison client:load />
 
 ### Generalizing to higher dimensions
 
 The fix is to generalize the golden ratio to higher dimensions. In 2D we use the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $\rho \approx 1.3247$, the real root of $x^3 = x + 1$. Just as $\varphi$ is the most irrational number in 1D (hardest to approximate with rationals), the plastic ratio's powers $\frac{1}{\rho}$ and $\frac{1}{\rho^2}$ are the 2D equivalent (the pair hardest to approximate jointly by rationals).
-
-<Callout variant="remark">
-  The plastic ratio is also the smallest [Pisot
-  number](https://en.wikipedia.org/wiki/Pisot-Vijayaraghavan_number).
-</Callout>
 
 For 3D we step up one more dimension. We want the real root of $x^4 = x + 1$, which I call $\varphi_3$ ($\approx 1.2207$). The offsets are its first three powers:
 
@@ -253,14 +226,7 @@ Two things are happening here.
 
 1. **Lightness stays in the middle.** Values below $0.35$ are too muddy and dark and above $0.85$ they look washed out. So we clamp between those values.
 
-<Callout variant="note" defaultOpen={false}>
-  It's tempting to just fix $L$ to a single value and sample 2D, but that costs
-  you a lot of vibrance with certain colors. Vivid yellows need high $L$ and
-  rich blues need lower $L$. Letting $L$ vary across a band keeps the full hue
-  wheel available.
-</Callout>
-
-2. **Chroma stays low enough.** The $\pm 0.15$ bounds on $a$ and $b$ keep us mostly inside the sRGB gamut so the clamping mentioned in the previous section is rarely needed.
+2. **Chroma stays low enough.** The $\pm 0.15$ bounds on $a$ and $b$ keep us mostly inside the sRGB bounds so the clamping mentioned in the [previous section](#linear-srgb--srgb-gamma-encoding) is minimally encountered. {/* minimalyl encountered */}
 
 ## Handling players joining and leaving
 
@@ -298,7 +264,7 @@ There's one issue. If a returned index doesn't work on this allocation, we put i
 
 Two colors count as "distinct" if their Euclidean distance in OKLAB is at least 0.04. Where does that number come from?
 
-0.01 to 0.02 is often cited as the just noticable difference in OKLAB. So you would have a hard time telling the difference between a pair of colors with that distance. For example <span style={{ color: '#4a90e2'}}>#4a90e2</span> and <span style={{ color: '#5e8ce1'}}>#5e8c1</span> have a distance of approximately 0.02. Choosing 0.04 gives a comfortable margin where colors remain clearly distinguishable.
+0.01 to 0.02 is often cited as the just noticeable difference in OKLAB. So you would have a hard time telling the difference between a pair of colors with that distance. For example <span style={{ color: '#4a90e2'}}>#4a90e2</span> and <span style={{ color: '#5e8ce1'}}>#5e8ce1</span> have a distance of approximately 0.02. Choosing 0.04 gives a comfortable margin where colors remain clearly distinguishable.
 
 ```rust title="server/src/colors.rs"
 const THRESHOLD_SQ: f64 = 0.04 * 0.04;
@@ -311,3 +277,9 @@ Here's what the first 20 colors look like with a random seed:
 <ColorPaletteDemo client:load />
 
 Reshuffle the seed to see a different set. Every run produces 20 distinct, roughly equally perceptually spaced colors.
+
+[^1]: sRGB is one of -- if not _the_ -- most common color spaces in use by most devices.
+
+[^2]:
+    OKLAB is a successor to [**CIELAB**](https://en.wikipedia.org/wiki/CIELAB_color_space) with blue/purple hue
+    distortion fixed.
