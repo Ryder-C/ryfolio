@@ -70,25 +70,27 @@ OKLAB is defined as a transformation on top of [LMS](https://en.wikipedia.org/wi
 {/* Add docstring here and change original code */}
 
 ```rust title="server/src/colors.rs"
-fn oklab_to_linear_srgb([l, a, b]: [f64; 3]) -> [f64; 3] {
-    // OKLAB -> LMS
+impl From<Oklab> for LinearRgb {
+    fn from(Oklab { l, a, b }: Oklab) -> Self {
+        // OKLAB -> LMS
 
-    // conversion matrix
-    let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
-    let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
-    let s_ = l - 0.0894841775 * a - 1.2914855480 * b;
+        // conversion matrix
+        let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+        let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+        let s_ = l - 0.0894841775 * a - 1.2914855480 * b;
 
-    // cube
-    let l = l_.powi(3);
-    let m = m_.powi(3);
-    let s = s_.powi(3);
+        // cube
+        let l = l_.powi(3);
+        let m = m_.powi(3);
+        let s = s_.powi(3);
 
-    // LMS -> linear sRGB
-    [
-        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
-    ]
+        // LMS -> linear sRGB
+        LinearRgb {
+            r: 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+            g: -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+            b: -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+        }
+    }
 }
 ```
 
@@ -130,12 +132,22 @@ $$
 In code:
 
 ```rust title="server/src/colors.rs"
-fn linear_to_srgb(c: f64) -> f64 {
-    let c = c.clamp(0.0, 1.0); // clamp to remain in sRGB
-    if c <= 0.0031308 {
-        12.92 * c
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
+impl From<LinearRgb> for Srgb8 {
+    fn from(LinearRgb { r, g, b }: LinearRgb) -> Self {
+        let encode = |c: f64| {
+            let c = c.clamp(0.0, 1.0); // clamp to remain in sRGB
+            let gamma = if c <= 0.0031308 {
+                12.92 * c
+            } else {
+                1.055 * c.powf(1.0 / 2.4) - 0.055
+            };
+            (gamma * 255.0 + 0.5) as u8
+        };
+        Srgb8 {
+            r: encode(r),
+            g: encode(g),
+            b: encode(b),
+        }
     }
 }
 ```
@@ -222,52 +234,71 @@ const A_RANGE: (f64, f64) = (-0.15, 0.15);
 const B_RANGE: (f64, f64) = (-0.15, 0.15);
 ```
 
-Two things are happening here.
+These ranges were chosen for two reasons:
 
 1. **Lightness stays in the middle.** Values below $0.35$ are too muddy and dark and above $0.85$ they look washed out. So we clamp between those values.
 
 2. **Chroma stays low enough.** The $\pm 0.15$ bounds on $a$ and $b$ keep us mostly inside the sRGB bounds so the clamping mentioned in the [previous section](#linear-srgb--srgb-gamma-encoding) is minimally encountered. {/* minimalyl encountered */}
 
-## Handling players joining and leaving
+## Filtering generated colors
 
-Generating the $n$-th color is easy. The harder part is staying perceptually distinct as players come and go, without causing existing player colors to change.
+Generating the $n$-th color is now as simple as just following the sequence. The last step is ensuring that the generated sequence colors don't clash with existing colors on the screen, like:
 
-The approach I took is each player holds onto their index for the lifetime of their session. When a player leaves, their index goes back into a pool of returnable indices. When a new player joins, attempt to reuse a returned index before advancing to a new one.
+1. Custom player colors.
+2. UI or map elements (terrain, parks, water, road fill).
+
+The colors _considered_, but not _determined_ by the sequence are called **occupied** colors. (like above)
+
+The map colors were sampled directly from the game map:
 
 ```rust title="server/src/colors.rs"
-pub struct DistinctColors {
-    seed: [f64; 3],
-    next_index: usize,
-    returned_indices: BTreeSet<usize>,
+const MAP_RESERVED_HEXES: &[&str] = &[
+    "#f6f5f5", "#f5f0e5", "#bbf0d0", "#cdf1dc", "#ccd0cb", "#70d3e7",
+];
+```
+
+When the next color in the sequence is requested, a candidate color is accepted only if it's perceptually distinct from every player's current color _and_ every map color.
+
+```rust title="server/src/colors.rs"
+pub fn next_filtered(&mut self, occupied: &[MemberColor]) -> MemberColor {
+    // Unparseable hexes can't constrain the new color, so silently drop them.
+    let member_oklabs: Vec<Oklab> = occupied.iter().filter_map(|c| c.to_oklab().ok()).collect();
+
+    let map_oklabs: Vec<Oklab> = MAP_RESERVED_HEXES
+        .iter()
+        .filter_map(|h| hex_to_oklab(h).ok())
+        .collect();
+
+    let is_distinct = |oklab: Oklab| {
+        member_oklabs
+            .iter()
+            .all(|&other| oklab.dist_sq(other) >= DISTINCT_THRESHOLD_SQ)
+            && map_oklabs
+                .iter()
+                .all(|&other| oklab.dist_sq(other) >= MAP_DISTINCT_THRESHOLD_SQ) // a different threshold??
+    };
+
+    loop {
+        let idx = self.next_index;
+        self.next_index += 1;
+        if is_distinct(self.nth_oklab(idx)) {
+            break self.distinct_at(idx);
+        }
+    }
 }
 ```
 
-But players can also pick their own custom colors and we don't want the server's generated colors to collide with those either. So when we try to get a color for a player, we don't just grab the immediate next index, but we check that its color is significantly perceptually distinct from every color currently in the lobby.
-
-So our `next_filtered` function runs through two parts:
-
-1. **Try returned indices first.** For each returned index, check whether its color is distinct from the currently occupied colors. If yes, use it. If not, put it back in the pool and keep looking.
-2. **Fall back to fresh indices.** If no returned index works, advance `next_index`. If that color happens to be too close to an already occupied one (someone's custom color), then put that index in `returned_indices` and get the next one.
-
-This way even a fresh index that gets blocked by a custom color isn't wasted, it's just waiting to be used from the pool of returned indices.
-
-There's one issue. If a returned index doesn't work on this allocation, we put it back and it stays in the pool. This means the pool can grow if the currently-occupied colors keep blocking the same returned indices. In practice the pool size is bounded by the number of players who have ever been in the game, which for Ryguessr is small enough not to matter.
-
-<Callout variant="note">
-  The filter only guards generated colors against occupied ones. For example,
-  two players who both pick <span style={{ color: '#ff0000' }}>#ff0000</span> as
-  a custom color will still collide. Preventing this goes against my idea of not
-  wanting to change existing colors so I just let it be.
-</Callout>
-
 ### How close is too close?
 
-Two colors count as "distinct" if their Euclidean distance in OKLAB is at least 0.04. Where does that number come from?
+Two player colors count as "distinct" if their Euclidean distance in OKLAB is at least 0.04. Where does that number come from?
 
-0.01 to 0.02 is often cited as the just noticeable difference in OKLAB. So you would have a hard time telling the difference between a pair of colors with that distance. For example <span style={{ color: '#4a90e2'}}>#4a90e2</span> and <span style={{ color: '#5e8ce1'}}>#5e8ce1</span> have a distance of approximately 0.02. Choosing 0.04 gives a comfortable margin where colors remain clearly distinguishable.
+0.01 to 0.02 is often cited as the _just noticeable difference_ in OKLAB. So it would be difficult to tell the difference between a pair of colors of that distance. For example <span style={{ color: '#4a90e2'}}>#4a90e2</span> and <span style={{ color: '#5e8ce1'}}>#5e8ce1</span> have a distance of approximately 0.02. Choosing 0.04 gives a comfortable margin where colors remain clearly distinguishable.
+
+The map background uses a larger threshold of 0.12. Player markers cover only a small area while the map covers most of the screen, so a marker has to sit further from a background color than from another marker to remain comfortably visible against it.
 
 ```rust title="server/src/colors.rs"
-const THRESHOLD_SQ: f64 = 0.04 * 0.04;
+const DISTINCT_THRESHOLD_SQ: f64 = 0.04 * 0.04;
+const MAP_DISTINCT_THRESHOLD_SQ: f64 = 0.12 * 0.12;
 ```
 
 ## Results
@@ -276,7 +307,7 @@ Here's what the first 20 colors look like with a random seed:
 
 <ColorPaletteDemo client:load />
 
-Reshuffle the seed to see a different set. Every run produces 20 distinct, roughly equally perceptually spaced colors.
+Reshuffle the seed to see a different set. Every run produces 20 distinct and roughly equally perceptually spaced colors.
 
 [^1]: sRGB is one of -- if not _the_ -- most common color spaces in use by most devices.
 
