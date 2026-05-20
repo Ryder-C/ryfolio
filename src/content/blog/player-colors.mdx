@@ -162,7 +162,7 @@ There exists colors in OKLAB which correspond to no color in sRGB, as they excee
 
 ## Sampling OKLAB: the $R_3$ quasirandom sequence
 
-Now that we have a nice perceptual color space that can be converted to sRGB, the next question is: **How do we sample this space to produce maximally distinct colors?** To reword the problem formally, we need to generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$.
+With a perceptual color space in hand that can be converted to sRGB, the next question is: **How should this space be sampled to produce maximally distinct colors?** To reword the problem formally, the goal is to generate an unbounded sequence of points $\{p_1,p_2,p_3,...\}$ such that each new point $p_{k+1}$ maximizes its minimum distance to all previous points $\{p_1,...,p_k\}$.
 
 This is known as a [low-discrepancy sequence](https://en.wikipedia.org/wiki/Low-discrepancy_sequence) (also called a quasirandom sequence).
 
@@ -208,9 +208,9 @@ The obvious next move is to run one $R_1$ sequence per axis with different seeds
 
 ### Generalizing to higher dimensions
 
-The fix is to generalize the golden ratio to higher dimensions. In 2D we use the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $\rho \approx 1.3247$, the real root of $x^3 = x + 1$. Just as $\varphi$ is the most irrational number in 1D (hardest to approximate with rationals), the plastic ratio's powers $\frac{1}{\rho}$ and $\frac{1}{\rho^2}$ are the 2D equivalent (the pair hardest to approximate jointly by rationals).
+The fix is to generalize the golden ratio to higher dimensions. In 2D, the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $\rho \approx 1.3247$ takes over, the real root of $x^3 = x + 1$. Just as $\varphi$ is the most irrational number in 1D (hardest to approximate with rationals), the plastic ratio's powers $\frac{1}{\rho}$ and $\frac{1}{\rho^2}$ are the 2D equivalent (the pair hardest to approximate jointly by rationals).
 
-For 3D we step up one more dimension. We want the real root of $x^4 = x + 1$, which I call $\varphi_3$ ($\approx 1.2207$). The offsets are its first three powers:
+For 3D, step up one more dimension. The real root of $x^4 = x + 1$ is what's needed, which I call $\varphi_3$ ($\approx 1.2207$). The offsets are its first three powers:
 
 $$
     \alpha_1 = \frac{1}{\varphi_3}, \quad \alpha_2 = \frac{1}{\varphi_3^2}, \quad \alpha_3 = \frac{1}{\varphi_3^3}
@@ -226,7 +226,7 @@ Each new point tends to land in a large gap left by the previous points, because
 
 ### Mapping $R_3$ into OKLAB
 
-$R_3$ generates points in the unit cube $[0,1]^3$, but OKLAB is not entirely inside that cube. $L \in [0,1]$, but $a,b$ are roughly bounded by $\pm 0.4$ with only a small slice of that producing colors that are in the sRGB space. We linearly map each $R_3$ coordinate into a chosen range:
+$R_3$ generates points in the unit cube $[0,1]^3$, but OKLAB is not entirely inside that cube. $L \in [0,1]$, but $a,b$ are roughly bounded by $\pm 0.4$ with only a small slice of that producing colors that are in the sRGB space. Each $R_3$ coordinate is linearly mapped into a chosen range:
 
 ```rust title="server/src/colors.rs"
 const L_RANGE: (f64, f64) = (0.35, 0.85);
@@ -236,9 +236,9 @@ const B_RANGE: (f64, f64) = (-0.15, 0.15);
 
 These ranges were chosen for two reasons:
 
-1. **Lightness stays in the middle.** Values below $0.35$ are too muddy and dark and above $0.85$ they look washed out. So we clamp between those values.
+1. **Lightness stays in the middle.** Values below $0.35$ are too muddy and dark and above $0.85$ they look washed out. So the range is clamped between those values.
 
-2. **Chroma stays low enough.** The $\pm 0.15$ bounds on $a$ and $b$ keep us mostly inside the sRGB bounds so the clamping mentioned in the [previous section](#linear-srgb--srgb-gamma-encoding) is minimally encountered. {/* minimalyl encountered */}
+2. **Chroma stays low enough.** The $\pm 0.15$ bounds on $a$ and $b$ keep colors mostly inside the sRGB bounds so the clamping mentioned in the [previous section](#linear-srgb--srgb-gamma-encoding) is minimally encountered. {/* minimalyl encountered */}
 
 ## Filtering generated colors
 
