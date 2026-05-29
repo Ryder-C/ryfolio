@@ -1,5 +1,5 @@
 ---
-title: "Picking Player Colors That Don't Suck"
+title: 'Picking Maximally Distinct Random Player Colors'
 description: 'Too deep of a dive into choosing maximally visually distinct random colors for players in a game'
 date: 2026-04-10
 tags: ['Math', 'Rust']
@@ -12,6 +12,7 @@ import PerceptualColorDemo from '@/components/PerceptualColorDemo'
 import ColorPaletteDemo from '@/components/ColorPaletteDemo'
 import SrgbDistanceDemo from '@/components/SrgbDistanceDemo'
 import FunctionGrapher from '@/components/FunctionGrapher'
+import IrrationalComparison from '@/components/IrrationalComparison'
 
 I am currently working on [Ryguessr](/projects/ryguessr) (a geoguessr clone) and encountered the problem of choosing random
 colors for players. The naive approaches came with compromises:
@@ -45,7 +46,7 @@ I settled on [**OKLAB**](https://en.wikipedia.org/wiki/Oklab_color_space)[^2] fo
 
 You can clearly see the difference between these color spaces by interpolating different pairs of colors. Equal steps in sRGB produce very different perceptual steps, while equal steps in OKLAB _look_ equal as well.
 
-<PerceptualColorDemo client:load /> {/*rename rgb to srgb*/}
+<PerceptualColorDemo client:load />
 
 <Callout variant="remark" defaultOpen={false}>
   Part of the sRGB gradient's *muddiness* is [gamma
@@ -66,8 +67,6 @@ OKLAB is defined as a transformation on top of [LMS](https://en.wikipedia.org/wi
     - $a$ is the green–red axis (negative green, positive red).
     - $b$ is the blue–yellow axis (negative blue, positive yellow).
 </Callout>
-
-{/* Add docstring here and change original code */}
 
 ```rust title="server/src/colors.rs"
 impl From<Oklab> for LinearRgb {
@@ -175,18 +174,13 @@ This is known as a [low-discrepancy sequence](https://en.wikipedia.org/wiki/Low-
   There are several well known low-discrepancy sequences (Halton, Sobol,
   Hammersley), but I went with the $R_d$ family (popularized by [Martin
   Roberts](https://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/)).
-  It has no base or direction numbers to pick, the recurrence is a single
-  multiply and mod, and it performs comparably to Halton for our purposes. It's
-  also the most elegant in my opinion, which matters when you're doing something
-  unnecessary anyway.
+  Mostly because the math is so elegant.
 </Callout>
 {/*greatly simplify note here*/}
 
 Since OKLAB is three dimensional, the low-discrepancy sequence (sampled colors) should be as well. The simplest option is to run independent one-dimensional sequences on each axis and hope it works out. It doesn't, but walking through _why_ is a nice way to demonstrate the motivation for the final solution.
 
 ### Starting in 1D: the golden ratio
-
-{/* explain why we are using Rd sequences */}
 
 Given the golden ratio $\varphi = \frac{1+\sqrt{5}}{2}$, the $R_1$ sequence is
 
@@ -197,6 +191,60 @@ $$
 where $x_0$ is a seed offset. This sequence works beautifully in one dimension:
 
 <R1NumberLine client:load />
+
+Underneath, this is just repeated addition of a fixed value $\alpha = \frac{1}{\varphi}$ (mod $1$). Which raises two questions: why does the step size have to be **irrational**, and why $\varphi$ in particular and not some other irrational?
+
+### Why irrational?
+
+Watch what happens when the step is rational. Say $\alpha = \frac{p}{q}$. After $q$ steps, $q \cdot \frac{p}{q} = p$ is an integer, so $x_q \equiv x_0 \mod 1$ and the sequence loops. It only ever visits the $q$ values
+
+$$
+    \left\{0,\; \tfrac{1}{q},\; \tfrac{2}{q},\; \dots,\; \tfrac{q-1}{q}\right\}
+$$
+
+then repeats them forever. For an unbounded stream of colors this is not satisfactory, you'd cap out at $q$ colors and then start getting duplicates.
+
+An irrational step fixes this. [Weyl's equidistribution theorem](https://en.wikipedia.org/wiki/Equidistribution_theorem) guarantees that $\{n\alpha \mod 1\}$ not only never repeats but fills $[0,1)$ **uniformly** in the limit. So choosing an irrational gets an infinite, eventually uniform sequence. But _eventually_ is doing alot of work in that sentence, I care about the first dozen or so colors, not the limit at infinity. Thats where the choice of irrational starts to matter.
+
+### Why the golden ratio?
+
+The clumping I'm trying to avoid happens precisely when $\alpha$ sits close to a simple fraction. If $\alpha \approx \frac{p}{q}$, then $q\alpha \approx p$ so $x_q \approx x_0$, so after $q$ steps you land nearly where you started and the sequence bunches into roughly $q$ tight clusters before it recovers. So a good step size is one that's hard to approximate by any fraction.
+
+[Continued fractions](https://en.wikipedia.org/wiki/Continued_fraction) measure exactly this. The construction peels a number apart one integer at a time: write down the whole part, and you're left with a fractional remainder below $1$; flip _that_ over to get a number above $1$, peel off its whole part, and repeat. Running it on $\pi$:
+
+$$
+    \pi = 3 + 0.1416\ldots, \qquad \tfrac{1}{0.1416\ldots} = 7.06\ldots, \qquad \tfrac{1}{0.06\ldots} = 15.99\ldots
+$$
+
+$$
+    \pi = 3 + 0.1416\ldots = 3 + \frac{1}{7 + 06\ldots} = 3 + \frac{1}{7 + \frac{1}{15 + 0.99\ldots}}
+$$
+
+The whole parts you peel off ($3,\, 7,\, 15,\, \dots$) _are_ the continued fraction. Folding them back into the reciprocals they came from builds a tower, and the bracket list is just shorthand for that tower:
+
+$$
+    [a_0;\, a_1,\, a_2,\, a_3,\, \dots] \;=\; a_0 + \cfrac{1}{a_1 + \cfrac{1}{a_2 + \cfrac{1}{a_3 + \ddots}}}
+$$
+
+Chop the tower off at any rung and you get an ordinary fraction. These are the **convergents**, and they're provably the best rational approximations the number has. The whole argument now fits in one observation: a _large_ term makes the rung beneath it, $\frac{1}{a_k + \cdots}$, almost nothing, so lopping the tower off just above a large term barely changes the value, sometimes leaving a strangely accurate simple fraction. $\pi$'s famous $\frac{355}{113}$ (right to seven decimals) is precisely this, it sits just before the $292$ in $\pi = [3;\, 7,\, 15,\, 1,\, 292,\, \dots]$.
+
+To be _hard_ to approximate you want the opposite: every term as small as it can be, so no rung is ever negligible and no convergent ever gets a lucky shortcut. The smallest a term can be is $1$, and the number that's _all_ $1$s is the golden ratio:
+
+$$
+    \varphi = [1;\, 1,\, 1,\, 1,\, \dots] = 1 + \cfrac{1}{1 + \cfrac{1}{1 + \cfrac{1}{1 + \ddots}}}
+$$
+
+which is just $\varphi = 1 + \frac{1}{\varphi}$ unrolled forever. Every rung pulls its full weight, so $\varphi$'s convergents close in as _slowly_ as any number's possibly can. That's the precise sense in which $\varphi$ is the "most irrational" number. [Hurwitz's theorem](<https://en.wikipedia.org/wiki/Hurwitz%27s_theorem_(number_theory)>) makes it official: the best universal approximation constant is $\frac{1}{\sqrt 5}$, and it's achieved only by $\varphi$ and its relatives.
+
+<Callout variant="remark" defaultOpen={false}>
+    Geometrically this is the [three-gap theorem](https://en.wikipedia.org/wiki/Three-gap_theorem): for any $\alpha$ and any $N$, the points $\{x_1, \dots, x_N\}$ cut the interval into gaps of at most **three** distinct lengths. For $\varphi$ those gaps stay as balanced as possible at every $N$, so each new point falls into the largest remaining gap and splits it as evenly as it can. This is exactly the property I want!
+</Callout>
+
+You can see all this in the plot below. The rational $\frac14$ collapses to four columns. $\frac1\pi$ snaps into clean diagonal bands, it's close to $\frac{7}{22}$, so every $22$ steps it wraps the strip about $7$ times and nearly retraces itself. $\frac1\varphi$ never resolves into bands at any scale, the structure refines into finer and finer texture instead of locking onto a fraction. That refusal to settle is what "most irrational" looks like:
+
+<IrrationalComparison client:load />
+
+$\sqrt 2 = [1;\, 2,\, 2,\, 2,\, \dots]$ is pretty good, but the $2$s leave it a bit more approximable than $\varphi$. So irrational is necessary, but badly approximable is what you really want.
 
 ### Stacking 1D sequences doesn't work
 
@@ -209,6 +257,8 @@ The obvious next move is to run one $R_1$ sequence per axis with different seeds
 ### Generalizing to higher dimensions
 
 The fix is to generalize the golden ratio to higher dimensions. In 2D, the [plastic ratio](https://en.wikipedia.org/wiki/Plastic_ratio) $\rho \approx 1.3247$ takes over, the real root of $x^3 = x + 1$. Just as $\varphi$ is the most irrational number in 1D (hardest to approximate with rationals), the plastic ratio's powers $\frac{1}{\rho}$ and $\frac{1}{\rho^2}$ are the 2D equivalent (the pair hardest to approximate jointly by rationals).
+
+What changed is the _kind_ of irrationality needed. In 1D, one badly-approximable number is enough, but in higher dimensions you need a whole _set_ of them that's jointly badly approximable, meaning no single $n$ drags every coordinate close to an integer at the same time. That simultaneous alignment is exactly what drew the diagonal lines above, independently well-spaced 1D sequences still share denominators that occasionally line up. Using successive powers of _one_ root, rather than three unrelated irrationals, is what keeps the coordinates from ever conspiring like that.
 
 For 3D, step up one more dimension. The real root of $x^4 = x + 1$ is what's needed, which I call $\varphi_3$ ($\approx 1.2207$). The offsets are its first three powers:
 
@@ -292,7 +342,7 @@ pub fn next_filtered(&mut self, occupied: &[MemberColor]) -> MemberColor {
 
 Two player colors count as "distinct" if their Euclidean distance in OKLAB is at least 0.04. Where does that number come from?
 
-0.01 to 0.02 is often cited as the _just noticeable difference_ in OKLAB. So it would be difficult to tell the difference between a pair of colors of that distance. For example <span style={{ color: '#4a90e2'}}>#4a90e2</span> and <span style={{ color: '#5e8ce1'}}>#5e8ce1</span> have a distance of approximately 0.02. Choosing 0.04 gives a comfortable margin where colors remain clearly distinguishable.
+0.01 to 0.02 is often cited as the _just noticeable difference_ in OKLAB. So it would be difficult to tell the difference between a pair of colors of that distance. For example <span style={{ color: '#4a90e2'}}>#4A90E2</span> and <span style={{ color: '#5e8ce1'}}>#5E8CE1</span> have a distance of approximately 0.02. Choosing 0.04 gives a comfortable margin where colors remain clearly distinguishable.
 
 The map background uses a larger threshold of 0.12. Player markers cover only a small area while the map covers most of the screen, so a marker has to sit further from a background color than from another marker to remain comfortably visible against it.
 

@@ -192,7 +192,7 @@ export default function PerceptualColorDemo() {
         ))}
       </div>
 
-      <GradientRow colors={rgbColors} label="RGB" labelColor={labelColor} />
+      <GradientRow colors={rgbColors} label="SRGB" labelColor={labelColor} />
       <GradientRow colors={oklabColors} label="OKLAB" labelColor={labelColor} />
     </div>
   )
