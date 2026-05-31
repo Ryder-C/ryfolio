@@ -6,6 +6,7 @@ import Layout from '@/layouts/layout.astro'
 import { getEntry } from 'astro:content'
 
 const author = await getEntry('authors', 'ryder')
+if (!author) throw new Error('Author entry "ryder" not found')
 const { name, pronouns, avatar, bio, github, mail, website } = author.data
 
 const links = [

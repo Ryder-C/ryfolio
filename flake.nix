@@ -6,20 +6,24 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { nixpkgs, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
-      in {
-        devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
-            nodejs_24
-            pnpm
-          ];
+  outputs = {
+    nixpkgs,
+    flake-utils,
+    ...
+  }:
+    flake-utils.lib.eachDefaultSystem (system: let
+      pkgs = nixpkgs.legacyPackages.${system};
+    in {
+      devShells.default = pkgs.mkShell {
+        packages = with pkgs; [
+          nodejs_24
+          pnpm
+          bun
+        ];
 
-          shellHook = ''
-            echo "ryfolio dev — node $(node --version), pnpm $(pnpm --version)"
-          '';
-        };
-      });
+        shellHook = ''
+          echo "ryfolio dev — node $(node --version), pnpm $(pnpm --version), bun $(bun --version)"
+        '';
+      };
+    });
 }
