@@ -24,7 +24,7 @@ colors for players. The naive approaches came with compromises:
 
 I wanted something that:
 
-- **(a)** produces a stream of colors that are _actually_ perceptually distinct.
+- **(a)** produces a unbounded stream of colors that are _actually_ perceptually distinct.
 - **(b)** adapts when players change their color or leave.
 - **(c)** has very low computational cost.
 
@@ -192,17 +192,23 @@ where $x_0$ is a seed offset. This sequence works beautifully in one dimension:
 
 <R1NumberLine client:load />
 
-Underneath, this is just repeated addition of a fixed value $\alpha = \frac{1}{\varphi}$ (mod $1$). Which raises two questions: why does the step size have to be **irrational**, and why $\varphi$ in particular and not some other irrational?
+Underneath, this is just repeated addition of a fixed value $\alpha = \frac{1}{\varphi}$ (mod $1$). This motivates two questions; why is the step size **irrational**, and why $\varphi$ in particular and not some other irrational?
 
 ### Why irrational?
 
-Watch what happens when the step is rational. Say $\alpha = \frac{p}{q}$. After $q$ steps, $q \cdot \frac{p}{q} = p$ is an integer, so $x_q \equiv x_0 \mod 1$ and the sequence loops. It only ever visits the $q$ values
+To see why, suppose the step were rational instead, $\alpha = \frac{p}{q}$ where $p$ and $q$ are integers. The sequence is then
 
 $$
-    \left\{0,\; \tfrac{1}{q},\; \tfrac{2}{q},\; \dots,\; \tfrac{q-1}{q}\right\}
+    x_n = n \cdot \tfrac{p}{q} + x_0 \mod 1
 $$
 
-then repeats them forever. For an unbounded stream of colors this is not satisfactory, you'd cap out at $q$ colors and then start getting duplicates.
+and it repeats with period $q$. Stepping forward by $q$ adds $q \cdot \tfrac{p}{q} = p$, an integer, which vanishes when mod $1$. So $x_{n+q} \equiv x_n \mod 1$ for _every_ $n$, not just $n = 0$. The seed offset $x_0$ shifts where the points land but doesn't break the loop, the sequence still only ever visits $q$ distinct values, evenly spaced around the interval:
+
+$$
+    \left\{x_0,\; x_0 + \tfrac{1}{q},\; x_0 + \tfrac{2}{q},\; \dots,\; x_0 + \tfrac{q-1}{q}\right\} \mod 1
+$$
+
+For an unbounded stream of colors this isn't enough, you'd cap out at $q$ colors before duplicates start.
 
 An irrational step fixes this. [Weyl's equidistribution theorem](https://en.wikipedia.org/wiki/Equidistribution_theorem) guarantees that $\{n\alpha \mod 1\}$ not only never repeats but fills $[0,1)$ **uniformly** in the limit. So choosing an irrational gets an infinite, eventually uniform sequence. But _eventually_ is doing alot of work in that sentence, I care about the first dozen or so colors, not the limit at infinity. Thats where the choice of irrational starts to matter.
 
@@ -220,25 +226,21 @@ $$
     \pi = 3 + 0.1416\ldots = 3 + \frac{1}{7 + 06\ldots} = 3 + \frac{1}{7 + \frac{1}{15 + 0.99\ldots}}
 $$
 
-The whole parts you peel off ($3,\, 7,\, 15,\, \dots$) _are_ the continued fraction. Folding them back into the reciprocals they came from builds a tower, and the bracket list is just shorthand for that tower:
+The whole parts you peel off ($3,\, 7,\, 15,\, \dots$) _are_ the continued fraction, and the bracket list is just shorthand for the nested expression:
 
 $$
     [a_0;\, a_1,\, a_2,\, a_3,\, \dots] \;=\; a_0 + \cfrac{1}{a_1 + \cfrac{1}{a_2 + \cfrac{1}{a_3 + \ddots}}}
 $$
 
-Chop the tower off at any rung and you get an ordinary fraction. These are the **convergents**, and they're provably the best rational approximations the number has. The whole argument now fits in one observation: a _large_ term makes the rung beneath it, $\frac{1}{a_k + \cdots}$, almost nothing, so lopping the tower off just above a large term barely changes the value, sometimes leaving a strangely accurate simple fraction. $\pi$'s famous $\frac{355}{113}$ (right to seven decimals) is precisely this, it sits just before the $292$ in $\pi = [3;\, 7,\, 15,\, 1,\, 292,\, \dots]$.
+Truncate the expression after any term and you get an ordinary fraction. These are the **convergents**, and they're provably the best rational approximations the number has. The whole argument now fits in one observation: a _large_ term $a_k$ makes the remaining tail $\frac{1}{a_k + \cdots}$ almost nothing, so truncating just before a large term barely changes the value, sometimes leaving a strangely accurate simple fraction. $\pi$'s famous $\frac{355}{113}$ (right to seven decimals) is precisely this, it sits just before the $292$ in $\pi = [3;\, 7,\, 15,\, 1,\, 292,\, \dots]$.
 
-To be _hard_ to approximate you want the opposite: every term as small as it can be, so no rung is ever negligible and no convergent ever gets a lucky shortcut. The smallest a term can be is $1$, and the number that's _all_ $1$s is the golden ratio:
+To be _hard_ to approximate you want the opposite: every term as small as it can be, so no tail is ever negligible and no convergent ever gets a lucky shortcut. The smallest a term can be is $1$, and the number that's _all_ $1$s is the golden ratio:
 
 $$
     \varphi = [1;\, 1,\, 1,\, 1,\, \dots] = 1 + \cfrac{1}{1 + \cfrac{1}{1 + \cfrac{1}{1 + \ddots}}}
 $$
 
-which is just $\varphi = 1 + \frac{1}{\varphi}$ unrolled forever. Every rung pulls its full weight, so $\varphi$'s convergents close in as _slowly_ as any number's possibly can. That's the precise sense in which $\varphi$ is the "most irrational" number. [Hurwitz's theorem](<https://en.wikipedia.org/wiki/Hurwitz%27s_theorem_(number_theory)>) makes it official: the best universal approximation constant is $\frac{1}{\sqrt 5}$, and it's achieved only by $\varphi$ and its relatives.
-
-<Callout variant="remark" defaultOpen={false}>
-    Geometrically this is the [three-gap theorem](https://en.wikipedia.org/wiki/Three-gap_theorem): for any $\alpha$ and any $N$, the points $\{x_1, \dots, x_N\}$ cut the interval into gaps of at most **three** distinct lengths. For $\varphi$ those gaps stay as balanced as possible at every $N$, so each new point falls into the largest remaining gap and splits it as evenly as it can. This is exactly the property I want!
-</Callout>
+which is just $\varphi = 1 + \frac{1}{\varphi}$ unrolled forever. Every term contributes equally, so $\varphi$'s convergents close in as _slowly_ as any number's possibly can. That's the precise sense in which $\varphi$ is the "most irrational" number.
 
 You can see all this in the plot below. The rational $\frac14$ collapses to four columns. $\frac1\pi$ snaps into clean diagonal bands, it's close to $\frac{7}{22}$, so every $22$ steps it wraps the strip about $7$ times and nearly retraces itself. $\frac1\varphi$ never resolves into bands at any scale, the structure refines into finer and finer texture instead of locking onto a fraction. That refusal to settle is what "most irrational" looks like:
 

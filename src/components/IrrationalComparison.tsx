@@ -38,7 +38,7 @@ function useTheme() {
 }
 
 export default function IrrationalComparison() {
-  const [alphaIdx, setAlphaIdx] = useState(3)
+  const [alphaIdx, setAlphaIdx] = useState(0)
   const [count, setCount] = useState(60)
   const theme = useTheme()
   const isDark = theme === 'dark'
@@ -169,13 +169,17 @@ export default function IrrationalComparison() {
         </text>
         <text
           x={W / 2}
-          y={PAD_TOP - 8}
+          y={PAD_TOP - 12}
           textAnchor="middle"
-          fill={labelColor}
-          fontSize={9}
+          fill={accentColor}
+          fontSize={11}
+          fontWeight={600}
           fontFamily="Geist Mono, ui-monospace, monospace"
         >
-          x_n
+          x
+          <tspan dy={3} fontSize={8}>
+            n
+          </tspan>
         </text>
 
         {/* y-axis labels (n grows downward) */}
@@ -200,11 +204,12 @@ export default function IrrationalComparison() {
           {count}
         </text>
         <text
-          x={PAD_X - 6}
+          x={PAD_X - 12}
           y={(PAD_TOP + (H - PAD_BOTTOM)) / 2}
           textAnchor="end"
-          fill={labelColor}
-          fontSize={9}
+          fill={accentColor}
+          fontSize={11}
+          fontWeight={600}
           fontFamily="Geist Mono, ui-monospace, monospace"
         >
           n
